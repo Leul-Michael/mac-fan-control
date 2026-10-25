@@ -109,10 +109,13 @@ final class PanelWindow {
     static let radius: CGFloat = 8
     private var window: NSWindow?
 
-    func minimize() { window?.miniaturize(nil) }
+    /// Hides the app (like ⌘H) instead of minimising: a minimised window leaves a tall thumbnail in the
+    /// Dock, while a hidden one comes straight back from the Dock icon.
+    func minimize() { NSApp.hide(nil) }
     func close() { window?.close() }
 
     func show() {
+        NSApp.unhide(nil)
         if window == nil {
             let root = CompactPanel(inWindow: true)
                 .environment(FanModel.shared)
