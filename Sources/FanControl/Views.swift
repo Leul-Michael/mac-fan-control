@@ -438,7 +438,8 @@ struct CompactPanel: View {
                 Rectangle().fill(Theme.line).frame(height: 1)
             }
             Row(id: "fans", open: $open, title: model.fans.count > 1 ? "Each fan" : "Fan",
-                detail: model.fans.map { Setting(model.rule($0.id), fan: $0).summary(model) }.joined(separator: " · ")) {
+                detail: model.fans.count > 1 && Setting.common(model.fans, model: model) != nil ? "Same for both"
+                    : model.fans.map { Setting(model.rule($0.id), fan: $0).summary(model) }.joined(separator: " · ")) {
                 ForEach(model.fans) { fan in
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .center, spacing: 4) {
@@ -787,22 +788,5 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 420)
-    }
-}
-
-// MARK: menu bar
-
-struct MenuBarLabel: View {
-    @Environment(FanModel.self) private var model
-
-    var body: some View {
-        let temp = model.menuBarSensor.isEmpty ? nil : model.celsius(model.menuBarSensor)
-        let rpm = model.fans.map(\.rpm).max()
-        HStack(spacing: 3) {
-            Image(systemName: model.isOn ? "fan.fill" : "fan")
-            if let temp { Text(Format.celsius(temp)) }
-            if model.menuBarShowsRPM, let rpm { Text(Format.shortRPM(rpm)) }
-        }
-        .monospacedDigit()
     }
 }

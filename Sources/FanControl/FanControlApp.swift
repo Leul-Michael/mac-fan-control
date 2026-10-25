@@ -9,13 +9,6 @@ struct FanControlApp: App {
     init() { Fonts.register() }
 
     var body: some Scene {
-        MenuBarExtra {
-            CompactPanel().environment(model)
-        } label: {
-            MenuBarLabel().environment(model)
-        }
-        .menuBarExtraStyle(.window)
-
         Settings {
             SettingsView().environment(model)
         }
@@ -28,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             #if DEBUG
             Snapshot.runIfRequested()
             #endif
+            StatusItem.shared.install()
             PanelWindow.shared.show()
         }
     }
@@ -89,6 +83,20 @@ final class PanelWindow {
     static let shared = PanelWindow()
     private var window: NSWindow?
 
+    var isVisible: Bool { window?.isVisible == true }
+
+    /// Menu bar click: hide when showing, otherwise appear just below the status item.
+    func toggle(below anchor: NSRect?) {
+        if isVisible && window?.isKeyWindow == true { window?.orderOut(nil); return }
+        show()
+        if let anchor, let window {
+            let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+            var origin = NSPoint(x: anchor.midX - window.frame.width / 2, y: anchor.minY - window.frame.height - 6)
+            origin.x = min(max(origin.x, screen.minX + 8), screen.maxX - window.frame.width - 8)
+            window.setFrameOrigin(origin)
+        }
+    }
+
     func show() {
         if window == nil {
             let host = NSHostingView(rootView: CompactPanel(inWindow: true).environment(FanModel.shared))
@@ -113,5 +121,44 @@ final class PanelWindow {
         }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
+    }
+}
+
+/// Menu bar item: fan glyph, a temperature and the fan speed; clicking it shows or hides the panel window.
+@MainActor
+final class StatusItem: NSObject {
+    static let shared = StatusItem()
+    private var item: NSStatusItem?
+    private var timer: Timer?
+
+    func install() {
+        guard item == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.target = self
+        item.button?.action = #selector(clicked)
+        item.button?.imagePosition = .imageLeading
+        self.item = item
+        update()
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            MainActor.assumeIsolated { StatusItem.shared.update() }
+        }
+    }
+
+    private func update() {
+        guard let button = item?.button else { return }
+        let model = FanModel.shared
+        button.image = NSImage(systemSymbolName: model.isOn ? "fan.fill" : "fan", accessibilityDescription: "Fan Control")
+        var parts: [String] = []
+        if !model.menuBarSensor.isEmpty, let t = model.celsius(model.menuBarSensor) { parts.append(Format.celsius(t)) }
+        if model.menuBarShowsRPM, let rpm = model.fans.map(\.rpm).max() { parts.append(Format.shortRPM(rpm)) }
+        let title = parts.isEmpty ? "" : " " + parts.joined(separator: " ")
+        if button.title != title {
+            button.attributedTitle = NSAttributedString(string: title, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])
+        }
+    }
+
+    @objc private func clicked() {
+        guard let button = item?.button, let window = button.window else { return PanelWindow.shared.toggle(below: nil) }
+        PanelWindow.shared.toggle(below: window.convertToScreen(button.convert(button.bounds, to: nil)))
     }
 }
