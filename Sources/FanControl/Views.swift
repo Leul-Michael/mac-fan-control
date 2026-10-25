@@ -787,30 +787,31 @@ private struct Footer: View {
 
 // MARK: minimised tile
 
-/// What the Dock shows for the minimised panel: a square tile in the panel's style with live readings.
+/// What the Dock shows for the minimised panel: a landscape mini-window like other apps' thumbnails, with
+/// only the on/off state, and the app icon as a corner badge.
 struct MinimizedTile: View {
     @Environment(FanModel.self) private var model
 
     var body: some View {
         GeometryReader { geo in
             let s = geo.size.width / 128   // drawn for 128 pt, scaled to the Dock's tile size
-            VStack(spacing: 6 * s) {
-                Image(nsImage: StatusIcon.image)
-                    .renderingMode(.template)
+            ZStack(alignment: .bottomTrailing) {
+                VStack(spacing: 4 * s) {
+                    Image(systemName: "power")
+                        .font(.system(size: 20 * s, weight: .bold))
+                    Text(model.isOn ? "ON" : "OFF")
+                        .font(Theme.font(10 * s, .bold)).tracking(1 * s)
+                }
+                .foregroundStyle(model.isOn ? Theme.accent : Theme.text3)
+                .frame(width: 112 * s, height: 72 * s)
+                .background(RoundedRectangle(cornerRadius: 6 * s, style: .continuous).fill(Theme.header))
+                .overlay(RoundedRectangle(cornerRadius: 6 * s, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1 * s))
+                .frame(width: geo.size.width, height: geo.size.height)
+                Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
-                    .frame(width: 30 * s, height: 30 * s)
-                    .foregroundStyle(model.isOn ? Theme.accent : Theme.text2)
-                Text(model.celsius("cpu-hot").map(Format.celsius) ?? "–")
-                    .font(Theme.font(34 * s, .bold))
-                    .foregroundStyle(Theme.text)
-                Text(model.fans.allSatisfy { $0.rpm < 50 } ? "fans idle" : model.fans.map { Format.shortRPM($0.rpm) }.joined(separator: " / "))
-                    .font(Theme.font(13 * s, .medium))
-                    .foregroundStyle(Theme.text2)
+                    .frame(width: 40 * s, height: 40 * s)
+                    .offset(x: -6 * s, y: -18 * s)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .background(RoundedRectangle(cornerRadius: 26 * s, style: .continuous).fill(Theme.header))
-            .overlay(RoundedRectangle(cornerRadius: 26 * s, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1.5 * s))
-            .padding(6 * s)
         }
     }
 }
