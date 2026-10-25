@@ -512,7 +512,8 @@ private struct Header: View {
                             .foregroundStyle(model.isOn ? Theme.accent : Theme.text)
                             .padding(.horizontal, 9).padding(.vertical, 3)
                             .background(Capsule().fill(model.isOn ? Theme.accent.opacity(0.14) : Theme.raised))
-                        Text(model.isOn ? (model.activePreset?.name ?? setting?.summary(model) ?? "Custom") : "macOS decides")
+                        Text(model.isOn && model.onBattery && model.autoOnBattery ? "On battery · macOS decides"
+                             : model.isOn ? (model.activePreset?.name ?? setting?.summary(model) ?? "Custom") : "macOS decides")
                             .font(Theme.font(16, .medium))
                             .foregroundStyle(model.isOn ? Theme.accent : Theme.text2)
                             .lineLimit(1)
@@ -580,11 +581,11 @@ private struct MainMenu: View {
     }
 }
 
-/// Minimise and close, drawn top-right like Windscribe (the system buttons are hidden).
+/// Hide and close, drawn top-right like Windscribe. The app lives in the menu bar, so both put it away there.
 private struct WindowDots: View {
     var body: some View {
         HStack(spacing: 8) {
-            dot(Color(red: 1.0, green: 0.74, blue: 0.18)) { NSApp.keyWindow?.miniaturize(nil) }
+            dot(Color(red: 1.0, green: 0.74, blue: 0.18)) { NSApp.keyWindow?.orderOut(nil) }   // no Dock icon: hide to the menu bar
             dot(Color(red: 1.0, green: 0.37, blue: 0.34)) { NSApp.keyWindow?.close() }
         }
     }
@@ -711,6 +712,17 @@ private struct Footer: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(model.installing)
+            } else if model.helperOutdated {
+                Text("Helper update available").font(Theme.font(12)).foregroundStyle(Theme.text2)
+                Spacer()
+                Button { model.installHelper() } label: {
+                    Text(model.installing ? "Updating…" : "Update helper")
+                        .font(Theme.font(12, .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(Capsule().fill(Theme.action))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.installing)
             } else if let message = model.message {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(.orange)
                 Text(message).font(Theme.font(11)).foregroundStyle(Theme.text2).lineLimit(2)
@@ -775,6 +787,7 @@ struct SettingsView: View {
             }
             Section("Behaviour") {
                 Toggle("Launch at login", isOn: Binding(get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
+                Toggle("Use Auto on battery", isOn: $model.autoOnBattery)
                 Toggle("Keep fan settings when the app quits", isOn: $model.keepRulesOnQuit)
                 Text("When off, quitting hands the fans back to macOS.").font(.caption).foregroundStyle(.secondary)
             }

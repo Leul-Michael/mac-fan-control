@@ -76,11 +76,18 @@ enum Fonts {
     }
 }
 
-/// The main panel in a plain AppKit window. The hosting view ignores the (invisible) title bar area and
-/// pins the window to the panel's exact size, so there is no strip above or below the content.
+/// Borderless windows normally cannot take keyboard focus; the panel needs it for its menus and dialogs.
+final class PanelNSWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+/// The main panel in a borderless window: our own 8 pt corners instead of the system's large ones, and a
+/// window pinned to the panel's exact size, so there is no strip above or below the content.
 @MainActor
 final class PanelWindow {
     static let shared = PanelWindow()
+    static let radius: CGFloat = 8
     private var window: NSWindow?
 
     var isVisible: Bool { window?.isVisible == true }
@@ -99,21 +106,21 @@ final class PanelWindow {
 
     func show() {
         if window == nil {
-            let host = NSHostingView(rootView: CompactPanel(inWindow: true).environment(FanModel.shared))
+            let root = CompactPanel(inWindow: true)
+                .environment(FanModel.shared)
+                .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(.white.opacity(0.1), lineWidth: 1))
+            let host = NSHostingView(rootView: root)
             host.safeAreaRegions = []
             host.sizingOptions = [.minSize, .maxSize]
-            let w = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize),
-                             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
-                             backing: .buffered, defer: false)
-            w.titlebarAppearsTransparent = true
-            w.titleVisibility = .hidden
+            let w = PanelNSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize),
+                                  styleMask: [.borderless], backing: .buffered, defer: false)
             w.title = "Fan Control"
+            w.isOpaque = false
+            w.backgroundColor = .clear   // the rounded panel itself is the window's shape
+            w.hasShadow = true
             w.isMovableByWindowBackground = true
             w.isReleasedWhenClosed = false
-            w.backgroundColor = NSColor(Theme.background)
-            for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                w.standardWindowButton(button)?.isHidden = true   // the panel draws its own dots
-            }
             w.contentView = host
             w.center()
             w.setFrameAutosaveName("FanControlPanel")

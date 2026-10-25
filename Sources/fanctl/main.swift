@@ -55,7 +55,15 @@ final class Daemon {
     var config = HelperConfig()
     var configStamp: Date?
     var overheated = false
+    var onBattery = false
+    /// Temperatures smoothed over time, per sensor id, so short spikes do not make the fans hunt.
+    var smoothed: [String: Double] = [:]
+    /// Fans a sensor rule has spun up; they are released 3° below the start temperature, not at it.
+    var engaged: Set<Int> = []
+    var lastTick = Date()
     let hotLimit = 100.0, coolAgain = 90.0   // above this the helper hands control back to macOS
+    let release = 3.0                        // °C below the start temperature before a fan goes back to macOS
+    let rampUp = 400.0, rampDown = 250.0     // rpm per second in sensor mode
 
     init(smc: SMC) { self.smc = smc; sensors = SensorReader(smc: smc) }
 
@@ -65,18 +73,61 @@ final class Daemon {
         configStamp = stamp
         config = HelperConfig.load() ?? HelperConfig()
         let summary = config.rules.sorted { $0.key < $1.key }.map { "fan \($0.key): \($0.value)" }.joined(separator: ", ")
-        log("rules: \(summary.isEmpty ? "all auto" : summary)")
+        log("rules: \(summary.isEmpty ? "all auto" : summary)\(config.autoOnBattery ? " (auto on battery)" : "")")
+    }
+
+    /// Rising temperatures are followed within ~3 s so heat gets a quick response; falling ones over ~10 s.
+    func smooth(_ dt: Double) {
+        var ids: Set<String> = []
+        for rule in config.rules.values { if case .sensor(let id, _, _) = rule { ids.insert(id) } }
+        for id in ids {
+            guard let raw = sensors.celsius(id) else { continue }
+            guard let previous = smoothed[id] else { smoothed[id] = raw; continue }
+            let tau = raw > previous ? 3.0 : 10.0
+            smoothed[id] = previous + (raw - previous) * (1 - exp(-dt / tau))
+        }
     }
 
     func tick() {
+        let now = Date()
+        let dt = min(5, max(0.1, now.timeIntervalSince(lastTick)))
+        lastTick = now
         reloadIfChanged()
-        let hottest = sensors.celsius("cpu-hot") ?? 0
+        smooth(dt)
+
+        let hottest = sensors.celsius("cpu-hot") ?? 0   // the safety check uses the raw reading
         if !overheated && hottest >= hotLimit { overheated = true; log(String(format: "CPU at %.0f °C: handing fans to macOS", hottest)) }
         if overheated && hottest < coolAgain { overheated = false; log("cooled down: rules resumed") }
+        let battery = config.autoOnBattery && Power.onBattery
+        if battery != onBattery { onBattery = battery; log(battery ? "on battery: fans handed to macOS" : "on power: rules resumed") }
+
         for fan in smc.fans() {
-            let rule = overheated ? .auto : config.rules[fan.id] ?? .auto
+            let rule = overheated || onBattery ? .auto : config.rules[fan.id] ?? .auto
+            var target: Double?
+            var ramped = false
+            switch rule {
+            case .sensor(let id, let start, let full):
+                if let t = smoothed[id], t >= (engaged.contains(fan.id) ? start - release : start) {
+                    engaged.insert(fan.id)
+                    target = curveRPM(celsius: t, start: start, full: full, fan: fan)
+                    ramped = true
+                } else {
+                    engaged.remove(fan.id)
+                }
+            case .constant(let rpm):
+                engaged.remove(fan.id)
+                target = min(max(rpm, fan.minimum), fan.maximum)
+            case .auto:
+                engaged.remove(fan.id)
+            }
             do {
-                if let rpm = targetRPM(for: rule, fan: fan, sensors: sensors) {
+                if var rpm = target {
+                    if ramped {
+                        // Start from where the fan is (macOS's speed when taking over), then move gradually.
+                        let from = fan.manual ? fan.target : max(fan.rpm, fan.minimum)
+                        let step = (rpm > from ? rampUp : rampDown) * dt
+                        if abs(rpm - from) > step { rpm = from + (rpm > from ? step : -step) }
+                    }
                     if !fan.manual || abs(fan.target - rpm) >= 20 { try smc.setFan(fan.id, rpm: rpm) }
                 } else if fan.manual {
                     try smc.setAuto(fan.id)
@@ -94,7 +145,9 @@ final class Daemon {
         }
         signal(SIGTERM, restore)
         signal(SIGINT, restore)
-        log("helper started")
+        try? String(HelperInfo.version).write(toFile: Paths.helperVersion, atomically: true, encoding: .utf8)
+        chmod(Paths.helperVersion, 0o644)
+        log("helper \(HelperInfo.version) started")
         while true {
             tick()
             Thread.sleep(forTimeInterval: 1)

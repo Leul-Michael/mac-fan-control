@@ -20,11 +20,15 @@ final class FanModel {
     private(set) var helperInstalled = false
     private(set) var helperRunning = false
     private(set) var installing = false
+    private(set) var onBattery = false
+    /// The running helper is older than this app and should be reinstalled.
+    private(set) var helperOutdated = false
     var message: String?
 
     var keepRulesOnQuit: Bool { didSet { defaults.set(keepRulesOnQuit, forKey: "keepRulesOnQuit") } }
     var menuBarSensor: String { didSet { defaults.set(menuBarSensor, forKey: "menuBarSensor") } }
     var menuBarShowsRPM: Bool { didSet { defaults.set(menuBarShowsRPM, forKey: "menuBarShowsRPM") } }
+    var autoOnBattery: Bool { didSet { defaults.set(autoOnBattery, forKey: "autoOnBattery"); push() } }
 
     private let smc: SMC?
     private let reader: SensorReader?
@@ -49,6 +53,7 @@ final class FanModel {
         keepRulesOnQuit = defaults.object(forKey: "keepRulesOnQuit") as? Bool ?? false
         menuBarSensor = defaults.string(forKey: "menuBarSensor") ?? "cpu-hot"
         menuBarShowsRPM = defaults.object(forKey: "menuBarShowsRPM") as? Bool ?? true
+        autoOnBattery = defaults.object(forKey: "autoOnBattery") as? Bool ?? true
         if let data = defaults.data(forKey: "customPresets"), let saved = try? JSONDecoder().decode([Preset].self, from: data) { customPresets = saved }
         if let data = defaults.data(forKey: "rules"), let saved = try? JSONDecoder().decode([Int: FanRule].self, from: data) { rules = saved }
         if let data = defaults.data(forKey: "lastRules"), let saved = try? JSONDecoder().decode([Int: FanRule].self, from: data) { lastRules = saved }
@@ -71,6 +76,11 @@ final class FanModel {
         helperInstalled = FileManager.default.fileExists(atPath: Paths.launchDaemon)
             && FileManager.default.isWritableFile(atPath: Paths.configDirectory)
         if !helperInstalled { helperRunning = false } else if ticks % 5 == 0 { helperRunning = Self.processRunning(Paths.helper) }
+        if ticks % 5 == 0 {
+            onBattery = Power.onBattery
+            let running = (try? String(contentsOfFile: Paths.helperVersion, encoding: .utf8)).flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? 1
+            helperOutdated = helperInstalled && running < HelperInfo.version
+        }
         ticks += 1
     }
 
@@ -154,7 +164,7 @@ final class FanModel {
             return
         }
         do {
-            try HelperConfig(rules: rules).save()
+            try HelperConfig(rules: rules, autoOnBattery: autoOnBattery).save()
             message = nil
         } catch {
             message = "Could not update the helper: \(error.localizedDescription)"
@@ -164,7 +174,7 @@ final class FanModel {
     /// Called when the app quits: unless asked to keep them, fans go back to macOS.
     func releaseOnQuit() {
         guard !keepRulesOnQuit, FileManager.default.isWritableFile(atPath: Paths.configDirectory) else { return }
-        try? HelperConfig().save()
+        try? HelperConfig(autoOnBattery: autoOnBattery).save()
     }
 
     #if DEBUG
