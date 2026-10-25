@@ -7,7 +7,7 @@ struct FanControlApp: App {
 
     var body: some Scene {
         Window("Fan Control", id: "main") {
-            CompactPanel().environment(model)
+            CompactPanel(inWindow: true).environment(model)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
