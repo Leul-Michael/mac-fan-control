@@ -404,6 +404,8 @@ struct CompactPanel: View {
     var scrolls = true
     @State var open: String?
     @State private var bodyHeight: CGFloat = 200
+    /// Height of the window's (invisible) title bar; the panel slides up under it.
+    @State private var titleBar: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -427,6 +429,8 @@ struct CompactPanel: View {
         .frame(width: Theme.width)
         .fixedSize(horizontal: false, vertical: true)   // the window is exactly as tall as the content
         .background(Theme.background)
+        .onGeometryChange(for: CGFloat.self, of: \.safeAreaInsets.top) { if inWindow { titleBar = $0 } }
+        .padding(.top, inWindow ? -titleBar : 0)
         .environment(\.colorScheme, .dark)
     }
 
@@ -544,7 +548,7 @@ private struct Header: View {
             .padding(.bottom, 18)
         }
         .padding(.horizontal, Theme.pad)
-        .padding(.top, inWindow ? 0 : 12)   // the window's title bar strip already gives top space
+        .padding(.top, 12)
         .background(Theme.header)
     }
 }
