@@ -113,6 +113,9 @@ final class PanelWindow {
 
     /// Minimises into the Dock. Instead of a squeezed snapshot of the tall panel, the Dock shows a square
     /// tile with the live CPU temperature and fan speeds, refreshed while the window stays minimised.
+    /// Visible to the user: shown, not minimised, app not hidden.
+    var isOnScreen: Bool { window.map { $0.isVisible && !$0.isMiniaturized } == true && !NSApp.isHidden }
+
     func minimize() {
         guard let window else { return }
         let tile = NSHostingView(rootView: MinimizedTile().environment(FanModel.shared))

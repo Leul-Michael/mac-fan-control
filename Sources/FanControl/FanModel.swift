@@ -65,19 +65,44 @@ final class FanModel {
 
     // MARK: readings
 
+    /// Reads fans and sensors. Views only redraw on changes worth showing (assigning an @Observable
+    /// property notifies even when the value is equal), and a hidden window is refreshed every 5 s.
     func refresh() {
+        defer { ticks += 1 }
         guard let smc, let reader else { return }
-        fans = smc.fans()
-        sensors = reader.readings()
-        helperInstalled = FileManager.default.fileExists(atPath: Paths.launchDaemon)
+        if !PanelWindow.shared.isOnScreen && ticks % 5 != 0 { return }
+
+        let newFans = smc.fans()
+        if !Self.close(newFans, fans) { fans = newFans }
+        let newSensors = reader.readings()
+        if !Self.close(newSensors, sensors) { sensors = newSensors }
+
+        let installed = FileManager.default.fileExists(atPath: Paths.launchDaemon)
             && FileManager.default.isWritableFile(atPath: Paths.configDirectory)
-        if !helperInstalled { helperRunning = false } else if ticks % 5 == 0 { helperRunning = Self.processRunning(Paths.helper) }
-        if ticks % 5 == 0 {
-            onBattery = Power.onBattery
-            let running = (try? String(contentsOfFile: Paths.helperVersion, encoding: .utf8)).flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? 1
-            helperOutdated = helperInstalled && running < HelperInfo.version
+        if installed != helperInstalled { helperInstalled = installed }
+        if !installed {
+            if helperRunning { helperRunning = false }
+        } else if ticks % 15 == 0 {
+            let running = Self.processRunning(Paths.helper)
+            if running != helperRunning { helperRunning = running }
         }
-        ticks += 1
+        if ticks % 5 == 0 {
+            let battery = Power.onBattery
+            if battery != onBattery { onBattery = battery }
+            let version = (try? String(contentsOfFile: Paths.helperVersion, encoding: .utf8)).flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? 1
+            let outdated = installed && version < HelperInfo.version
+            if outdated != helperOutdated { helperOutdated = outdated }
+        }
+    }
+
+    private static func close(_ a: [FanReading], _ b: [FanReading]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy { x, y in
+            abs(x.rpm - y.rpm) < 15 && abs(x.target - y.target) < 15 && x.manual == y.manual && x.minimum == y.minimum && x.maximum == y.maximum
+        }
+    }
+
+    private static func close(_ a: [SensorReading], _ b: [SensorReading]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy { $0.id == $1.id && abs($0.celsius - $1.celsius) < 0.3 }
     }
 
     func celsius(_ sensor: String) -> Double? { sensors.first { $0.id == sensor }?.celsius }
@@ -199,7 +224,7 @@ final class FanModel {
                 let model = FanModel.shared
                 model.installing = false
                 if let failure, !(failure.contains("canceled") || failure.contains("cancelled")) { model.message = failure }
-                model.ticks = 0   // check the helper process now, not on the next 5-second pass
+                model.ticks = 0   // check the helper process now, not on the next pass
                 model.refresh()
                 model.push()
             }

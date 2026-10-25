@@ -237,7 +237,6 @@ struct TemperatureRange: View {
                     if let now {
                         Capsule().fill(.white).frame(width: 2, height: 12)
                             .offset(x: x(min(max(now, Self.bounds.lowerBound), Self.bounds.upperBound)) + knob / 2 - 1)
-                            .animation(.easeOut(duration: 0.6), value: now)
                     }
                     handle.offset(x: x(start))
                         .gesture(drag(width) { onChange(min($0, full - 5), full) })
@@ -521,8 +520,6 @@ private struct Header: View {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(model.celsius("cpu-hot").map(Format.celsius) ?? "–")
                             .font(Theme.font(30, .bold))
-                            .contentTransition(.numericText())
-                            .animation(.snappy, value: Int(model.celsius("cpu-hot") ?? 0))
                         Text("CPU").font(Theme.font(30))
                     }
                     .foregroundStyle(Theme.text)
@@ -535,7 +532,6 @@ private struct Header: View {
                 Image(systemName: "fan")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.text2)
-                    .symbolEffect(.rotate, options: .repeat(.continuous).speed(1.2), isActive: model.fans.contains { $0.rpm >= 50 })
                 Text(model.fans.map { "\($0.name.replacingOccurrences(of: " Fan", with: "")) \(Format.rpm($0.rpm))" }.joined(separator: "  ·  "))
                     .font(Theme.font(13)).foregroundStyle(Theme.text2)
                 Spacer()
