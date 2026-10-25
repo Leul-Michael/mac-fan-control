@@ -106,7 +106,7 @@ enum Setting: Equatable {
 
 // MARK: controls
 
-/// Flat segmented control: the selected segment is a lighter tile that slides.
+/// Compact glass segmented control: a frosted track with a translucent, highlighted tile that slides.
 struct Segmented<Value: Hashable>: View {
     let options: [(Value, String)]
     let selection: Value?
@@ -119,20 +119,42 @@ struct Segmented<Value: Hashable>: View {
                 let selected = value == selection
                 Button { withAnimation(.snappy(duration: 0.22)) { onSelect(value) } } label: {
                     Text(title)
-                        .font(Theme.font(12, selected ? .semibold : .medium))
+                        .font(Theme.font(11, selected ? .semibold : .medium))
                         .foregroundStyle(selected ? Theme.text : Theme.text3)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 3)
                         .background {
-                            if selected { RoundedRectangle(cornerRadius: 6).fill(Theme.selected).matchedGeometryEffect(id: "tile", in: highlight) }
+                            if selected {
+                                Capsule()
+                                    .fill(.white.opacity(0.16))
+                                    .overlay(Capsule().strokeBorder(
+                                        LinearGradient(colors: [.white.opacity(0.45), .white.opacity(0.06)], startPoint: .top, endPoint: .bottom),
+                                        lineWidth: 0.75))
+                                    .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                                    .matchedGeometryEffect(id: "tile", in: highlight)
+                            }
                         }
-                        .contentShape(Rectangle())
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.raised))
+        .padding(2)
+        .glassTrack()
+        .fixedSize()
+    }
+}
+
+extension View {
+    /// Liquid Glass on macOS 26+, frosted material with a hairline highlight before that.
+    @ViewBuilder func glassTrack() -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(.regular, in: .capsule)
+        } else {
+            background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.03)], startPoint: .top, endPoint: .bottom), lineWidth: 0.75))
+        }
     }
 }
 
@@ -273,12 +295,18 @@ struct SettingControls: View {
     @Environment(FanModel.self) private var model
     let fans: [FanReading]
     var compact = false
+    /// Shown on the same line as the mode switch.
+    var title: String?
 
     var body: some View {
         let current = Setting.common(fans, model: model)
         VStack(alignment: .leading, spacing: 12) {
             if !compact {
-                Segmented(options: Setting.Kind.allCases.map { ($0, $0.rawValue) }, selection: current?.kind) { select($0) }
+                HStack {
+                    if let title { Text(title.uppercased()).font(Theme.font(11, .semibold)).tracking(1.4).foregroundStyle(Theme.text3) }
+                    Spacer(minLength: 8)
+                    Segmented(options: Setting.Kind.allCases.map { ($0, $0.rawValue) }, selection: current?.kind) { select($0) }
+                }
             }
             switch current {
             case nil:
@@ -393,11 +421,8 @@ struct CompactPanel: View {
     private var sections: some View {
         VStack(alignment: .leading, spacing: 0) {
             if model.fans.count > 1 {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("BOTH FANS").font(Theme.font(11, .semibold)).tracking(1.4).foregroundStyle(Theme.text3)
-                    SettingControls(fans: model.fans)
-                }
-                .padding(.horizontal, Theme.pad).padding(.top, 22).padding(.bottom, Theme.pad)
+                SettingControls(fans: model.fans, title: "Both fans")
+                    .padding(.horizontal, Theme.pad).padding(.top, 22).padding(.bottom, Theme.pad)
                 Rectangle().fill(Theme.line).frame(height: 1)
             }
             Row(id: "fans", open: $open, title: model.fans.count > 1 ? "Each fan" : "Fan",
