@@ -18,13 +18,13 @@ enum Theme {
     static let text2 = Color.white.opacity(0.62)
     static let text3 = Color.white.opacity(0.40)
 
-    /// IBM Plex Sans (the typeface Windscribe uses); digits keep a constant width so live numbers do not jitter.
+    /// Saira Semi Condensed: squared, technical letterforms; digits keep a constant width so live numbers do not jitter.
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         let name = switch weight {
-        case .bold, .heavy, .black: "IBMPlexSans-Bold"
-        case .semibold: "IBMPlexSans-SmBld"
-        case .medium: "IBMPlexSans-Medm"
-        default: "IBMPlexSans"
+        case .bold, .heavy, .black: "SairaSemiCondensed-Bold"
+        case .semibold: "SairaSemiCondensed-SemiBold"
+        case .medium: "SairaSemiCondensed-Medium"
+        default: "SairaSemiCondensed-Regular"
         }
         return .custom(name, fixedSize: size).monospacedDigit()
     }
@@ -312,25 +312,24 @@ struct CompactPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             Header(inWindow: inWindow)
-            ZStack(alignment: .top) {
-                Theme.header   // shows through the slanted corner of the panel below
-                VStack(spacing: 0) {
-                    if scrolls {
-                        ScrollView {
-                            sections.onGeometryChange(for: CGFloat.self, of: \.size.height) { bodyHeight = $0 }
-                        }
-                        .scrollIndicators(.never)
-                        .frame(height: min(bodyHeight, Theme.maxBodyHeight))
-                    } else {
-                        sections
+            Group {
+                if scrolls {
+                    ScrollView {
+                        sections.onGeometryChange(for: CGFloat.self, of: \.size.height) { bodyHeight = $0 }
                     }
+                    .scrollIndicators(.never)
+                    .frame(height: min(bodyHeight, Theme.maxBodyHeight))
+                } else {
+                    sections
                 }
-                .background(Theme.background)
-                .clipShape(SlantedTab())
             }
+            .background(Theme.background)
+            .clipShape(SlantedTab())
+            .background(Theme.header)   // shows through the slanted corner
             Footer()
         }
         .frame(width: Theme.width)
+        .fixedSize(horizontal: false, vertical: true)   // the window is exactly as tall as the content
         .background(Theme.background)
         .environment(\.colorScheme, .dark)
     }
@@ -405,7 +404,7 @@ private struct Header: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 MainMenu()
-                Text("fancontrol").font(Theme.font(18, .bold)).tracking(-0.4).foregroundStyle(Theme.text)
+                Text("fancontrol").font(Theme.font(21, .bold)).tracking(-0.4).foregroundStyle(Theme.text)
                 Spacer()
                 if inWindow { WindowDots() }
             }
@@ -419,16 +418,16 @@ private struct Header: View {
                             .padding(.horizontal, 9).padding(.vertical, 3)
                             .background(Capsule().fill(model.isOn ? Theme.accent.opacity(0.14) : Theme.raised))
                         Text(model.isOn ? (model.activePreset?.name ?? setting?.summary(model) ?? "Custom") : "macOS decides")
-                            .font(Theme.font(14, .medium))
+                            .font(Theme.font(16, .medium))
                             .foregroundStyle(model.isOn ? Theme.accent : Theme.text2)
                             .lineLimit(1)
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(model.celsius("cpu-hot").map(Format.celsius) ?? "–")
-                            .font(Theme.font(26, .bold))
+                            .font(Theme.font(30, .bold))
                             .contentTransition(.numericText())
                             .animation(.snappy, value: Int(model.celsius("cpu-hot") ?? 0))
-                        Text("CPU").font(Theme.font(26))
+                        Text("CPU").font(Theme.font(30))
                     }
                     .foregroundStyle(Theme.text)
                 }
@@ -578,7 +577,7 @@ private struct Row<Content: View>: View {
         VStack(alignment: .leading, spacing: 14) {
             Button { withAnimation(.snappy(duration: 0.25)) { open = isOpen ? nil : id } } label: {
                 HStack(spacing: 10) {
-                    Text(title).font(Theme.font(15)).foregroundStyle(Theme.text)
+                    Text(title).font(Theme.font(17)).foregroundStyle(Theme.text)
                     Spacer()
                     if !isOpen { Text(detail).font(Theme.font(12)).foregroundStyle(Theme.text3).lineLimit(1) }
                     Image(systemName: "chevron.down")
