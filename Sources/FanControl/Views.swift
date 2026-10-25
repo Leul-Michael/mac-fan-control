@@ -785,6 +785,36 @@ private struct Footer: View {
     }
 }
 
+// MARK: minimised tile
+
+/// What the Dock shows for the minimised panel: a square tile in the panel's style with live readings.
+struct MinimizedTile: View {
+    @Environment(FanModel.self) private var model
+
+    var body: some View {
+        GeometryReader { geo in
+            let s = geo.size.width / 128   // drawn for 128 pt, scaled to the Dock's tile size
+            VStack(spacing: 6 * s) {
+                Image(nsImage: StatusIcon.image)
+                    .renderingMode(.template)
+                    .resizable()
+                    .frame(width: 30 * s, height: 30 * s)
+                    .foregroundStyle(model.isOn ? Theme.accent : Theme.text2)
+                Text(model.celsius("cpu-hot").map(Format.celsius) ?? "–")
+                    .font(Theme.font(34 * s, .bold))
+                    .foregroundStyle(Theme.text)
+                Text(model.fans.allSatisfy { $0.rpm < 50 } ? "fans idle" : model.fans.map { Format.shortRPM($0.rpm) }.joined(separator: " / "))
+                    .font(Theme.font(13 * s, .medium))
+                    .foregroundStyle(Theme.text2)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .background(RoundedRectangle(cornerRadius: 26 * s, style: .continuous).fill(Theme.header))
+            .overlay(RoundedRectangle(cornerRadius: 26 * s, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1.5 * s))
+            .padding(6 * s)
+        }
+    }
+}
+
 // MARK: window dragging
 
 /// Empty header space moves the window (the borderless panel has no title bar to grab).

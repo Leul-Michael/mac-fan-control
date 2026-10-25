@@ -107,15 +107,32 @@ final class PanelNSWindow: NSWindow {
 final class PanelWindow {
     static let shared = PanelWindow()
     static let radius: CGFloat = 8
-    private var window: NSWindow?
+    private(set) var window: NSWindow?
 
-    /// Hides the app (like ⌘H) instead of minimising: a minimised window leaves a tall thumbnail in the
-    /// Dock, while a hidden one comes straight back from the Dock icon.
-    func minimize() { NSApp.hide(nil) }
+    private var tileTimer: Timer?
+
+    /// Minimises into the Dock. Instead of a squeezed snapshot of the tall panel, the Dock shows a square
+    /// tile with the live CPU temperature and fan speeds, refreshed while the window stays minimised.
+    func minimize() {
+        guard let window else { return }
+        let tile = NSHostingView(rootView: MinimizedTile().environment(FanModel.shared))
+        tile.frame = NSRect(origin: .zero, size: window.dockTile.size)
+        window.dockTile.contentView = tile
+        window.dockTile.display()
+        window.miniaturize(nil)
+        tileTimer?.invalidate()
+        tileTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+            MainActor.assumeIsolated { PanelWindow.shared.refreshTile() }
+        }
+    }
+
+    private func refreshTile() {
+        guard let window, window.isMiniaturized else { tileTimer?.invalidate(); tileTimer = nil; return }
+        window.dockTile.display()
+    }
     func close() { window?.close() }
 
     func show() {
-        NSApp.unhide(nil)
         if window == nil {
             let root = CompactPanel(inWindow: true)
                 .environment(FanModel.shared)
