@@ -17,9 +17,15 @@ enum Theme {
     static let text3 = Color.white.opacity(0.38)
     static let accentGradient = LinearGradient(colors: [accent, accentDeep], startPoint: .top, endPoint: .bottom)
 
-    /// SF Pro Rounded at a fixed size; digits keep a constant width so live numbers do not jitter.
+    /// IBM Plex Sans (the typeface Windscribe uses) at a fixed size; digits keep a constant width so live numbers do not jitter.
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .rounded).monospacedDigit()
+        let name = switch weight {
+        case .bold, .heavy, .black: "IBMPlexSans-Bold"
+        case .semibold: "IBMPlexSans-SmBld"
+        case .medium: "IBMPlexSans-Medm"
+        default: "IBMPlexSans"
+        }
+        return .custom(name, fixedSize: size).monospacedDigit()
     }
 
     // 4-point spacing scale
@@ -41,6 +47,41 @@ enum Format {
         case ..<90: return .orange
         default: return .red
         }
+    }
+}
+
+// MARK: glass
+
+extension View {
+    /// Liquid Glass on macOS 26+, frosted material with a light edge highlight before that.
+    @ViewBuilder func glass(_ radius: CGFloat = Theme.radius, tint: Color? = nil) -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(tint.map { Glass.regular.tint($0) } ?? .regular, in: .rect(cornerRadius: radius))
+        } else {
+            background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius))
+                .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.28), .white.opacity(0.04)], startPoint: .top, endPoint: .bottom), lineWidth: 1))
+        }
+    }
+}
+
+/// Deep blue base with soft colour glows, so the glass has something to refract.
+struct PanelBackground: View {
+    /// On: the glows brighten and shift toward mint, the way Windscribe's header lights up when connected.
+    var on = false
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [on ? Color(red: 0.06, green: 0.22, blue: 0.48) : Color(red: 0.07, green: 0.12, blue: 0.30),
+                                    Color(red: 0.03, green: 0.05, blue: 0.12)],
+                           startPoint: .top, endPoint: .bottom)
+            Circle().fill(on ? Color(red: 0.10, green: 0.55, blue: 0.95) : Theme.blueTop)
+                .frame(width: 260).blur(radius: 70).offset(x: 120, y: -230).opacity(on ? 0.95 : 0.55)
+            Circle().fill(Color(red: 0.45, green: 0.30, blue: 0.95)).frame(width: 200).blur(radius: 80).offset(x: -140, y: 20).opacity(on ? 0.30 : 0.40)
+            Circle().fill(Theme.accent).frame(width: on ? 280 : 200).blur(radius: 90).offset(x: on ? 90 : 110, y: on ? -120 : 260).opacity(on ? 0.45 : 0.22)
+        }
+        .clipped()
+        .animation(.easeInOut(duration: 0.9), value: on)
     }
 }
 
@@ -302,13 +343,30 @@ struct CompactPanel: View {
     @Environment(FanModel.self) private var model
     /// The window shows traffic-light buttons over the header; the menu bar panel does not.
     var inWindow = false
+    /// Debug snapshots render without the scroll view, which image renderers cannot draw.
+    var scrolls = true
     @State private var open: String?
     @State private var bodyHeight: CGFloat = 200
 
     var body: some View {
         VStack(spacing: 0) {
             Header(inWindow: inWindow)
-            ScrollView {
+            if scrolls {
+                ScrollView {
+                    cards.onGeometryChange(for: CGFloat.self, of: \.size.height) { bodyHeight = $0 }
+                }
+                .frame(height: min(bodyHeight, Theme.maxBodyHeight))
+            } else {
+                cards
+            }
+            Footer()
+        }
+        .frame(width: Theme.width)
+        .background(PanelBackground(on: model.isOn))
+        .environment(\.colorScheme, .dark)
+    }
+
+    private var cards: some View {
                 VStack(spacing: Theme.s2) {
                     if model.fans.count > 1 {
                         Card {
@@ -339,15 +397,6 @@ struct CompactPanel: View {
                     }
                 }
                 .padding(Theme.s3)
-                .onGeometryChange(for: CGFloat.self, of: \.size.height) { bodyHeight = $0 }
-            }
-            .scrollIndicators(.automatic)
-            .frame(height: min(bodyHeight, Theme.maxBodyHeight))
-            Footer()
-        }
-        .frame(width: Theme.width)
-        .background(Theme.background)
-        .environment(\.colorScheme, .dark)
     }
 }
 
@@ -367,7 +416,7 @@ private struct Header: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
                         Text(model.celsius("cpu-hot").map { "\(Int($0.rounded()))" } ?? "–")
-                            .font(.system(size: 52, weight: .bold, design: .rounded).monospacedDigit())
+                            .font(Theme.font(52, .bold))
                             .tracking(-2)
                             .contentTransition(.numericText())
                             .animation(.snappy, value: Int(model.celsius("cpu-hot") ?? 0))
@@ -391,12 +440,6 @@ private struct Header: View {
         .padding(.horizontal, Theme.s4)
         .padding(.top, inWindow ? Theme.s3 : Theme.s4)
         .padding(.bottom, Theme.s4)
-        .background {
-            ZStack {
-                LinearGradient(colors: [Theme.blueTop, Theme.blueBottom], startPoint: .topLeading, endPoint: .bottomTrailing)
-                RadialGradient(colors: [.white.opacity(0.18), .clear], center: .topTrailing, startRadius: 0, endRadius: 220)
-            }
-        }
     }
 }
 
@@ -410,7 +453,7 @@ private struct StatusPill: View {
         }
         .foregroundStyle(on ? Theme.accent : .white.opacity(0.75))
         .padding(.horizontal, 9).padding(.vertical, 4)
-        .background(Capsule().fill(.black.opacity(0.25)))
+        .glass(12, tint: on ? Theme.accent.opacity(0.18) : nil)
     }
 }
 
@@ -444,33 +487,91 @@ private struct FanTile: View {
             }
         }
         .padding(.horizontal, 10).padding(.vertical, Theme.s2)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.black.opacity(0.22)))
+        .glass(12)
     }
 }
 
+/// Windscribe-style power button: turning on spins an arc around the ring while the helper takes over,
+/// then the ring fills mint and the glow breathes; turning off winds the ring back to grey.
 private struct PowerButton: View {
     @Environment(FanModel.self) private var model
     @State private var pressed = false
+    @State private var fill: CGFloat = 0
+    @State private var connecting = false
+    @State private var spin = 0.0
+    @State private var breathe = false
+
+    private let size: CGFloat = 78, ring: CGFloat = 5
 
     var body: some View {
-        Button { model.togglePower() } label: {
+        let lit = model.isOn && !connecting
+        Button(action: toggle) {
             ZStack {
-                Circle().fill(model.isOn ? Theme.accent.opacity(0.25) : .white.opacity(0.08)).padding(-6)
-                Circle().fill(LinearGradient(colors: [.white, Color(white: 0.88)], startPoint: .top, endPoint: .bottom))
-                Circle().strokeBorder(model.isOn ? Theme.accent : .white.opacity(0.3), lineWidth: 5)
+                // halo
+                Circle()
+                    .fill(Theme.accent.opacity(lit ? 0.30 : 0.0))
+                    .padding(-10)
+                    .scaleEffect(lit && breathe ? 1.10 : 0.96)
+                    .blur(radius: 6)
+                Circle().fill(.white.opacity(0.08)).padding(-6)
+                // face
+                Circle().fill(LinearGradient(colors: [.white, Color(white: 0.86)], startPoint: .top, endPoint: .bottom))
+                // ring track, fill and the connecting arc
+                Circle().inset(by: ring / 2).stroke(Color(white: 0.78), lineWidth: ring)
+                Circle().inset(by: ring / 2)
+                    .trim(from: 0, to: fill)
+                    .stroke(Theme.accentGradient, style: StrokeStyle(lineWidth: ring, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                if connecting {
+                    Circle().inset(by: ring / 2)
+                        .trim(from: 0, to: 0.3)
+                        .stroke(AngularGradient(colors: [Theme.accent.opacity(0), Theme.accent], center: .center,
+                                                startAngle: .degrees(0), endAngle: .degrees(108)),
+                                style: StrokeStyle(lineWidth: ring, lineCap: .round))
+                        .rotationEffect(.degrees(spin))
+                }
                 Image(systemName: "power")
                     .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(model.isOn ? Theme.blueBottom : Color(white: 0.6))
+                    .foregroundStyle(lit ? Theme.blueBottom : Color(white: 0.58))
+                    .scaleEffect(connecting ? 0.9 : 1)
             }
-            .frame(width: 78, height: 78)
-            .shadow(color: model.isOn ? Theme.accent.opacity(0.55) : .black.opacity(0.3), radius: model.isOn ? 14 : 6, y: 2)
-            .scaleEffect(pressed ? 0.94 : 1)
-            .animation(.spring(duration: 0.3), value: model.isOn)
+            .frame(width: size, height: size)
+            .shadow(color: lit ? Theme.accent.opacity(0.55) : .black.opacity(0.3), radius: lit ? 16 : 6, y: 2)
+            .scaleEffect(pressed ? 0.93 : 1)
             .animation(.spring(duration: 0.2), value: pressed)
+            .animation(.easeInOut(duration: 0.4), value: lit)
         }
         .buttonStyle(.plain)
         .onLongPressGesture(minimumDuration: .infinity, pressing: { pressed = $0 }, perform: {})
         .help(model.helperInstalled ? (model.isOn ? "Hand the fans back to macOS" : "Use your fan settings") : "Install the helper first")
+        .onAppear {
+            fill = model.isOn ? 1 : 0
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { breathe = true }
+        }
+        .onChange(of: model.isOn) { _, on in
+            // Presets and the fan controls can switch the state too; follow without the connecting spin.
+            guard !connecting else { return }
+            withAnimation(.easeInOut(duration: 0.5)) { fill = on ? 1 : 0 }
+        }
+    }
+
+    private func toggle() {
+        guard model.helperInstalled else { model.installHelper(); return }
+        let turningOn = !model.isOn
+        if turningOn {
+            connecting = true
+            fill = 0
+            spin = 0
+            withAnimation(.linear(duration: 1.0)) { spin = 720 }
+            model.togglePower()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                connecting = false
+                withAnimation(.easeOut(duration: 0.55)) { fill = 1 }
+            }
+        } else {
+            model.togglePower()
+            withAnimation(.easeInOut(duration: 0.45)) { fill = 0 }
+        }
     }
 }
 
@@ -481,8 +582,7 @@ private struct Card<Content: View>: View {
         VStack(alignment: .leading, spacing: Theme.s3) { content }
             .padding(Theme.s4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: Theme.radius).fill(Theme.card))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.cardStroke, lineWidth: 1))
+            .glass()
     }
 }
 
@@ -633,8 +733,8 @@ private struct Footer: View {
             .fixedSize()
         }
         .padding(.horizontal, Theme.s3).padding(.vertical, 10)
-        .background(Color.black.opacity(0.28))
-        .overlay(alignment: .top) { Rectangle().fill(Theme.cardStroke).frame(height: 1) }
+        .glass(16)
+        .padding(.horizontal, Theme.s3).padding(.bottom, Theme.s3)
         .alert("Save Preset", isPresented: $savingPreset) {
             TextField("Name", text: $presetName)
             Button("Save") { model.saveCurrentAsPreset(named: presetName); presetName = "" }

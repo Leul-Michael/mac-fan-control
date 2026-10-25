@@ -1,9 +1,12 @@
+import CoreText
 import SwiftUI
 
 @main
 struct FanControlApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = FanModel.shared
+
+    init() { Fonts.register() }
 
     var body: some Scene {
         Window("Fan Control", id: "main") {
@@ -46,17 +49,28 @@ enum Snapshot {
     @MainActor static func runIfRequested() {
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }
-        let view = NSHostingView(rootView: CompactPanel().environment(FanModel.shared).fixedSize())
-        view.appearance = NSAppearance(named: .darkAqua)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
-        window.contentView = view
         RunLoop.main.run(until: Date().addingTimeInterval(1.5))
-        view.setFrameSize(view.fittingSize)
-        view.layoutSubtreeIfNeeded()
-        let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
-        view.cacheDisplay(in: view.bounds, to: rep)
-        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+        let renderer = ImageRenderer(content: CompactPanel(scrolls: false).environment(FanModel.shared).environment(\.colorScheme, .dark))
+        renderer.scale = 2
+        if let image = renderer.nsImage, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+        }
         exit(0)
     }
 }
 #endif
+
+/// Registers the bundled IBM Plex Sans files for this process.
+enum Fonts {
+    static func register() {
+        let bundled = Bundle.main.resourceURL?.appendingPathComponent("Fonts")
+        // `swift run` has no app bundle: fall back to the fonts in the source tree.
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../Resources/Fonts").standardized
+        for dir in [bundled, source].compactMap({ $0 }) {
+            let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?.filter { $0.pathExtension == "ttf" } ?? []
+            guard !files.isEmpty else { continue }
+            CTFontManagerRegisterFontURLs(files as CFArray, .process, true, nil)
+            return
+        }
+    }
+}
