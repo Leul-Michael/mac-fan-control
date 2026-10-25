@@ -167,6 +167,11 @@ final class FanModel {
         try? HelperConfig().save()
     }
 
+    #if DEBUG
+    /// Snapshots only: show these rules without sending them to the helper.
+    func previewRules(_ preview: [Int: FanRule]) { rules = preview }
+    #endif
+
     // MARK: helper
 
     func installHelper() { runPrivileged("install --user \(NSUserName())") }

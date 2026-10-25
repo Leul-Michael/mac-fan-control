@@ -13,7 +13,6 @@ struct FanControlApp: App {
             CompactPanel(inWindow: true)
                 .environment(model)
                 .background(BorderlessWindow())
-                .ignoresSafeArea()
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -54,7 +53,11 @@ enum Snapshot {
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }
         RunLoop.main.run(until: Date().addingTimeInterval(1.5))
-        let renderer = ImageRenderer(content: CompactPanel(scrolls: false).environment(FanModel.shared).environment(\.colorScheme, .dark))
+        let demo = args.contains("--demo")
+        if demo {
+            FanModel.shared.previewRules([0: .sensor(id: "cpu-hot", startCelsius: 50, fullCelsius: 85), 1: .constant(rpm: 3600)])
+        }
+        let renderer = ImageRenderer(content: CompactPanel(scrolls: false, open: demo ? "fans" : nil).environment(FanModel.shared).environment(\.colorScheme, .dark))
         renderer.scale = 2
         if let image = renderer.nsImage, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))

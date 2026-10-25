@@ -181,54 +181,110 @@ struct Chip: View {
     }
 }
 
-/// "– 50° +" control.
-struct TemperatureStepper: View {
-    let label: String
-    let value: Double
-    let range: ClosedRange<Double>
-    let onChange: (Double) -> Void
+/// Two-handle temperature range: fans start speeding up at the left handle and reach full speed at the
+/// right one. A tick shows where the sensor is now.
+struct TemperatureRange: View {
+    let start: Double
+    let full: Double
+    let now: Double?
+    let onChange: (Double, Double) -> Void
+
+    static let bounds = 30.0...105.0
+    private let knob: CGFloat = 16
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label.uppercased()).font(Theme.font(9, .semibold)).tracking(1).foregroundStyle(Theme.text3)
-            HStack(spacing: 0) {
-                step("minus", -1)
-                Text("\(Int(value))°").font(Theme.font(13, .semibold)).foregroundStyle(Theme.text).frame(maxWidth: .infinity)
-                step("plus", 1)
+        VStack(spacing: 6) {
+            GeometryReader { geo in
+                let width = geo.size.width - knob
+                let x = { (t: Double) in width * CGFloat((t - Self.bounds.lowerBound) / (Self.bounds.upperBound - Self.bounds.lowerBound)) }
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.raised).frame(height: 4).padding(.horizontal, knob / 2)
+                    Capsule().fill(Theme.accent).frame(width: max(0, x(full) - x(start)), height: 4).offset(x: x(start) + knob / 2)
+                    if let now {
+                        Capsule().fill(.white).frame(width: 2, height: 12)
+                            .offset(x: x(min(max(now, Self.bounds.lowerBound), Self.bounds.upperBound)) + knob / 2 - 1)
+                            .animation(.easeOut(duration: 0.6), value: now)
+                    }
+                    handle.offset(x: x(start))
+                        .gesture(drag(width) { onChange(min($0, full - 5), full) })
+                    handle.offset(x: x(full))
+                        .gesture(drag(width) { onChange(start, max($0, start + 5)) })
+                }
+                .frame(maxHeight: .infinity)
+                .coordinateSpace(name: "range")
             }
-            .padding(2)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.raised))
+            .frame(height: 20)
+            HStack {
+                Text("from \(Int(start))°").foregroundStyle(Theme.text2)
+                Spacer()
+                if let now { Text("now \(Int(now.rounded()))°").foregroundStyle(Theme.text3) }
+                Spacer()
+                Text("max at \(Int(full))°").foregroundStyle(Theme.text2)
+            }
+            .font(Theme.font(11, .medium))
         }
     }
 
-    private func step(_ symbol: String, _ delta: Double) -> some View {
-        Button { onChange(min(range.upperBound, max(range.lowerBound, value + delta))) } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Theme.text2)
-                .frame(width: 26, height: 24)
-                .contentShape(Rectangle())
+    private var handle: some View {
+        Circle().fill(.white).frame(width: knob, height: knob).shadow(color: .black.opacity(0.4), radius: 2, y: 1)
+    }
+
+    private func drag(_ width: CGFloat, _ set: @escaping (Double) -> Void) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("range")).onChanged { g in
+            let share = Double(max(0, min(1, (g.location.x - knob / 2) / max(1, width))))
+            set((Self.bounds.lowerBound + share * (Self.bounds.upperBound - Self.bounds.lowerBound)).rounded())
         }
-        .buttonStyle(.plain)
-        .buttonRepeatBehavior(.enabled)
     }
 }
 
-/// Mode picker plus the controls for that mode, applied to one or more fans.
+/// Small pill that switches a fan between Auto, Speed and Sensor.
+struct ModeMenu: View {
+    let selection: Setting.Kind?
+    let onSelect: (Setting.Kind) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(Setting.Kind.allCases) { kind in
+                Button { onSelect(kind) } label: {
+                    if kind == selection { Label(kind.rawValue, systemImage: "checkmark") } else { Text(kind.rawValue) }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Text(selection?.rawValue ?? "Mixed")
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.text3)
+            }
+            .font(Theme.font(12, .semibold))
+            .foregroundStyle(selection == nil || selection == .auto ? Theme.text2 : Theme.text)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+}
+
+/// Mode controls applied to one or more fans. `compact` leaves out the mode switch (the caller shows a
+/// ModeMenu) and the speed presets, so per-fan rows stay one control tall.
 struct SettingControls: View {
     @Environment(FanModel.self) private var model
     let fans: [FanReading]
+    var compact = false
 
     var body: some View {
         let current = Setting.common(fans, model: model)
         VStack(alignment: .leading, spacing: 12) {
-            Segmented(options: Setting.Kind.allCases.map { ($0, $0.rawValue) }, selection: current?.kind) { select($0) }
-
+            if !compact {
+                Segmented(options: Setting.Kind.allCases.map { ($0, $0.rawValue) }, selection: current?.kind) { select($0) }
+            }
             switch current {
             case nil:
-                note("Fans are set differently. Pick a mode to link them.")
+                if !compact { note("Fans are set differently. Pick a mode to link them.") }
             case .auto?:
-                note(fans.count > 1 ? "macOS is controlling both fans." : "macOS is controlling this fan.")
+                if !compact { note(fans.count > 1 ? "macOS is controlling both fans." : "macOS is controlling this fan.") }
             case .speed(let share)?:
                 speed(share)
             case .sensor(let id, let start, let full)?:
@@ -238,18 +294,22 @@ struct SettingControls: View {
     }
 
     private func note(_ text: String) -> some View {
-        Text(text).font(Theme.font(11)).foregroundStyle(Theme.text3)
+        Text(text).font(Theme.font(12)).foregroundStyle(Theme.text3)
     }
 
-    private func apply(_ setting: Setting) {
+    private func apply(_ setting: Setting) { Self.apply(setting, to: fans, model: model) }
+    private func select(_ kind: Setting.Kind) { Self.select(kind, fans: fans, model: model) }
+
+    @MainActor static func apply(_ setting: Setting, to fans: [FanReading], model: FanModel) {
         model.setRules(Dictionary(uniqueKeysWithValues: fans.map { ($0.id, setting.rule(for: $0)) }))
     }
 
-    private func select(_ kind: Setting.Kind) {
+    /// Switching mode starts from sensible values: the current speed, or a 50–85° curve on the hottest core.
+    @MainActor static func select(_ kind: Setting.Kind, fans: [FanReading], model: FanModel) {
         switch kind {
-        case .auto: apply(.auto)
-        case .speed: apply(.speed(max(0.3, fans.map(\.load).max() ?? 0.5)))
-        case .sensor: apply(.sensor(id: "cpu-hot", start: 50, full: 85))
+        case .auto: apply(.auto, to: fans, model: model)
+        case .speed: apply(.speed(max(0.3, fans.map(\.load).max() ?? 0.5)), to: fans, model: model)
+        case .sensor: apply(.sensor(id: "cpu-hot", start: 50, full: 85), to: fans, model: model)
         }
     }
 
@@ -261,9 +321,11 @@ struct SettingControls: View {
                 .foregroundStyle(Theme.text)
                 .frame(width: 38, alignment: .trailing)
         }
-        HStack(spacing: 6) {
-            ForEach([("Low", 0.0), ("50%", 0.5), ("75%", 0.75), ("Max", 1.0)], id: \.0) { name, value in
-                Chip(title: name, selected: abs(share - value) < 0.01) { apply(.speed(value)) }
+        if !compact {
+            HStack(spacing: 6) {
+                ForEach([("Low", 0.0), ("50%", 0.5), ("75%", 0.75), ("Max", 1.0)], id: \.0) { name, value in
+                    Chip(title: name, selected: abs(share - value) < 0.01) { apply(.speed(value)) }
+                }
             }
         }
     }
@@ -276,25 +338,19 @@ struct SettingControls: View {
                 }
             }
         } label: {
-            HStack(spacing: 8) {
-                Text("Follow").foregroundStyle(Theme.text3)
+            HStack(spacing: 5) {
+                Text("Follows").foregroundStyle(Theme.text3)
                 Text(model.availableSensors.first { $0.id == id }?.name ?? id).foregroundStyle(Theme.text)
-                Spacer()
-                Text(model.celsius(id).map(Format.celsius) ?? "–").foregroundStyle(Theme.text2)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.text3)
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.text3)
             }
             .font(Theme.font(12, .medium))
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.raised))
             .contentShape(Rectangle())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        HStack(spacing: 8) {
-            TemperatureStepper(label: "Speed up from", value: start, range: 30...95) { apply(.sensor(id: id, start: $0, full: max(full, $0 + 5))) }
-            TemperatureStepper(label: "Max speed at", value: full, range: 35...105) { apply(.sensor(id: id, start: start, full: max($0, start + 5))) }
-        }
+        .fixedSize()
+        TemperatureRange(start: start, full: full, now: model.celsius(id)) { apply(.sensor(id: id, start: $0, full: $1)) }
     }
 }
 
@@ -306,7 +362,7 @@ struct CompactPanel: View {
     var inWindow = false
     /// Debug snapshots render without the scroll view, which image renderers cannot draw.
     var scrolls = true
-    @State private var open: String?
+    @State var open: String?
     @State private var bodyHeight: CGFloat = 200
 
     var body: some View {
@@ -348,16 +404,17 @@ struct CompactPanel: View {
                 detail: model.fans.map { Setting(model.rule($0.id), fan: $0).summary(model) }.joined(separator: " · ")) {
                 ForEach(model.fans) { fan in
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text(fan.name.replacingOccurrences(of: " Fan", with: "")).font(Theme.font(13, .semibold)).foregroundStyle(Theme.text)
-                            Text("fan").font(Theme.font(13)).foregroundStyle(Theme.text2)
+                        HStack(alignment: .center, spacing: 4) {
+                            Text(fan.name.replacingOccurrences(of: " Fan", with: "")).font(Theme.font(14, .semibold)).foregroundStyle(Theme.text)
+                            Text("fan").font(Theme.font(14)).foregroundStyle(Theme.text2)
+                            Text(Format.rpm(fan.rpm) + (fan.rpm >= 50 ? " rpm" : ""))
+                                .font(Theme.font(12)).foregroundStyle(Theme.text3).padding(.leading, 6)
                             Spacer()
-                            Text(Format.rpm(fan.rpm)).font(Theme.font(13, .medium)).foregroundStyle(Theme.text2)
-                            if fan.rpm >= 50 { Text("rpm").font(Theme.font(11)).foregroundStyle(Theme.text3) }
+                            ModeMenu(selection: Setting(model.rule(fan.id), fan: fan).kind) { SettingControls.select($0, fans: [fan], model: model) }
                         }
-                        SettingControls(fans: [fan])
+                        SettingControls(fans: [fan], compact: true)
                     }
-                    .padding(.bottom, fan.id == model.fans.last?.id ? 0 : 8)
+                    .padding(.bottom, fan.id == model.fans.last?.id ? 0 : 6)
                 }
             }
             Rectangle().fill(Theme.line).frame(height: 1)
@@ -450,7 +507,7 @@ private struct Header: View {
             .padding(.bottom, 18)
         }
         .padding(.horizontal, Theme.pad)
-        .padding(.top, 12)
+        .padding(.top, inWindow ? 0 : 12)   // the window's title bar strip already gives top space
         .background(Theme.header)
     }
 }
@@ -663,7 +720,7 @@ private struct Footer: View {
 
 // MARK: window chrome
 
-/// Hides the system title bar and traffic lights so the panel reaches the window edge.
+/// Makes the title bar invisible (header-coloured, no title, no traffic lights) and the window draggable anywhere.
 struct BorderlessWindow: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -673,7 +730,7 @@ struct BorderlessWindow: NSViewRepresentable {
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
             window.isMovableByWindowBackground = true
-            window.backgroundColor = NSColor(Theme.background)
+            window.backgroundColor = NSColor(Theme.header)   // the title bar strip blends into the header
             for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
                 window.standardWindowButton(button)?.isHidden = true
             }
