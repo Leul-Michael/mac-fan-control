@@ -90,20 +90,6 @@ final class PanelWindow {
     static let radius: CGFloat = 8
     private var window: NSWindow?
 
-    var isVisible: Bool { window?.isVisible == true }
-
-    /// Menu bar click: hide when showing, otherwise appear just below the status item.
-    func toggle(below anchor: NSRect?) {
-        if isVisible && window?.isKeyWindow == true { window?.orderOut(nil); return }
-        show()
-        if let anchor, let window {
-            let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-            var origin = NSPoint(x: anchor.midX - window.frame.width / 2, y: anchor.minY - window.frame.height - 6)
-            origin.x = min(max(origin.x, screen.minX + 8), screen.maxX - window.frame.width - 8)
-            window.setFrameOrigin(origin)
-        }
-    }
-
     func show() {
         if window == nil {
             let root = CompactPanel(inWindow: true)
@@ -131,9 +117,9 @@ final class PanelWindow {
     }
 }
 
-/// Menu bar item: an outlined fan icon; clicking it shows or hides the panel window.
+/// Menu bar item: an outlined fan icon with a Windscribe-style dropdown (power, presets, show app, quit).
 @MainActor
-final class StatusItem: NSObject {
+final class StatusItem: NSObject, NSMenuDelegate {
     static let shared = StatusItem()
     private var item: NSStatusItem?
 
@@ -143,13 +129,66 @@ final class StatusItem: NSObject {
         let image = NSImage(systemSymbolName: "fan", accessibilityDescription: "Fan Control")
         image?.isTemplate = true   // follows the menu bar's light or dark appearance
         item.button?.image = image
-        item.button?.target = self
-        item.button?.action = #selector(clicked)
+        let menu = NSMenu()
+        menu.delegate = self       // rebuilt each time it opens, so it shows the current state
+        item.menu = menu
         self.item = item
     }
 
-    @objc private func clicked() {
-        guard let button = item?.button, let window = button.window else { return PanelWindow.shared.toggle(below: nil) }
-        PanelWindow.shared.toggle(below: window.convertToScreen(button.convert(button.bounds, to: nil)))
+    nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
+        MainActor.assumeIsolated { rebuild(menu) }
     }
+
+    private func rebuild(_ menu: NSMenu) {
+        let model = FanModel.shared
+        menu.removeAllItems()
+
+        var status: [String] = []
+        if let t = model.celsius("cpu-hot") { status.append("CPU \(Format.celsius(t))") }
+        if !model.fans.isEmpty { status.append(model.fans.allSatisfy { $0.rpm < 50 } ? "fans idle" : model.fans.map { Format.shortRPM($0.rpm) }.joined(separator: " / ") + " rpm") }
+        let info = NSMenuItem(title: status.joined(separator: " · "), action: nil, keyEquivalent: "")
+        info.isEnabled = false
+        menu.addItem(info)
+        menu.addItem(.separator())
+
+        if model.helperInstalled {
+            menu.addItem(action(model.isOn ? "Turn Off" : "Turn On") { FanModel.shared.togglePower() })
+        } else {
+            menu.addItem(action("Install Helper…") { FanModel.shared.installHelper() })
+        }
+        let presets = NSMenu()
+        for preset in model.presets {
+            let entry = action(preset.name) { FanModel.shared.apply(preset) }
+            entry.state = preset.id == model.activePresetID ? .on : .off
+            presets.addItem(entry)
+        }
+        let presetsItem = NSMenuItem(title: "Presets", action: nil, keyEquivalent: "")
+        presetsItem.submenu = presets
+        menu.addItem(presetsItem)
+        menu.addItem(.separator())
+
+        menu.addItem(action("Show App") { PanelWindow.shared.show() })
+        menu.addItem(action("Settings…", key: ",") {
+            NSApp.activate()
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        })
+        menu.addItem(.separator())
+        menu.addItem(action("Quit Fan Control", key: "q") { NSApp.terminate(nil) })
+    }
+
+    private func action(_ title: String, key: String = "", _ run: @escaping @MainActor () -> Void) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(MenuAction.runAction), keyEquivalent: key)
+        let target = MenuAction(run)
+        item.target = target
+        item.representedObject = target   // keeps the target alive as long as the item
+        return item
+    }
+}
+
+/// Lets a menu item run a closure.
+@MainActor
+final class MenuAction: NSObject {
+    private let run: @MainActor () -> Void
+    init(_ run: @escaping @MainActor () -> Void) { self.run = run }
+    @objc func runAction() { run() }
 }
