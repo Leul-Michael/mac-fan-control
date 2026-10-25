@@ -15,6 +15,8 @@ final class FanModel {
     private(set) var rules: [Int: FanRule] = [:]
     private(set) var customPresets: [Preset] = []
     private(set) var activePresetID: UUID?
+    /// The settings in force before the power button turned the fans over to macOS.
+    private(set) var lastRules: [Int: FanRule] = [:]
     private(set) var helperInstalled = false
     private(set) var helperRunning = false
     private(set) var installing = false
@@ -49,11 +51,12 @@ final class FanModel {
         menuBarShowsRPM = defaults.object(forKey: "menuBarShowsRPM") as? Bool ?? true
         if let data = defaults.data(forKey: "customPresets"), let saved = try? JSONDecoder().decode([Preset].self, from: data) { customPresets = saved }
         if let data = defaults.data(forKey: "rules"), let saved = try? JSONDecoder().decode([Int: FanRule].self, from: data) { rules = saved }
+        if let data = defaults.data(forKey: "lastRules"), let saved = try? JSONDecoder().decode([Int: FanRule].self, from: data) { lastRules = saved }
         activePresetID = defaults.string(forKey: "activePreset").flatMap(UUID.init) ?? Self.automatic.id
         availableSensors = reader?.available ?? []
         if smc == nil { message = "This Mac's fan controller could not be opened." }
         refresh()
-        push()   // re-apply the last rules after a restart of the app
+        if !CommandLine.arguments.contains("--snapshot") { push() }   // re-apply the last rules after a restart of the app
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             MainActor.assumeIsolated { FanModel.shared.refresh() }
         }
@@ -83,16 +86,44 @@ final class FanModel {
 
     // MARK: rules and presets
 
-    func setRule(_ rule: FanRule, fan: Int) {
-        rules[fan] = rule == .auto ? nil : rule
+    func setRule(_ rule: FanRule, fan: Int) { setRules([fan: rule]) }
+
+    /// Changes several fans in one write, so linked changes reach the helper together.
+    func setRules(_ changes: [Int: FanRule]) {
+        var next = rules
+        for (fan, rule) in changes { next[fan] = rule == .auto ? nil : rule }
+        guard next != rules else { return }
+        rules = next
         activePresetID = presets.first { $0.rules == rules }?.id
+        if !rules.isEmpty { lastRules = rules }
         push()
     }
 
     func apply(_ preset: Preset) {
         rules = preset.rules.filter { $0.value != .auto }
         activePresetID = preset.id
+        if !rules.isEmpty { lastRules = rules }
         push()
+    }
+
+    /// On: any fan follows your settings. Off: macOS controls every fan.
+    var isOn: Bool { !rules.isEmpty }
+
+    /// The power button: off hands the fans to macOS; on brings back the last settings (or 60% on both fans).
+    func togglePower() {
+        guard helperInstalled else { installHelper(); return }
+        if isOn {
+            lastRules = rules
+            rules = [:]
+            activePresetID = Self.automatic.id
+            push()
+        } else if !lastRules.isEmpty {
+            setRules(lastRules)
+        } else {
+            setRules(Dictionary(uniqueKeysWithValues: fans.map { fan in
+                (fan.id, FanRule.constant(rpm: ((fan.minimum + 0.6 * (fan.maximum - fan.minimum)) / 50).rounded() * 50))
+            }))
+        }
     }
 
     func saveCurrentAsPreset(named name: String) {
@@ -111,6 +142,7 @@ final class FanModel {
     private func persist() {
         defaults.set(try? JSONEncoder().encode(customPresets), forKey: "customPresets")
         defaults.set(try? JSONEncoder().encode(rules), forKey: "rules")
+        defaults.set(try? JSONEncoder().encode(lastRules), forKey: "lastRules")
         defaults.set(activePresetID?.uuidString, forKey: "activePreset")
     }
 
