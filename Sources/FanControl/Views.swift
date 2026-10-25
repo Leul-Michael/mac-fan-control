@@ -146,6 +146,18 @@ struct Segmented<Value: Hashable>: View {
 }
 
 extension View {
+    /// Round glass surface; `tint` colours the glass (used for the power button when on).
+    @ViewBuilder func glassCircle(tint: Color? = nil) -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(tint.map { Glass.regular.tint($0) } ?? .regular, in: .circle)
+        } else {
+            background(.ultraThinMaterial, in: Circle())
+                .background(Circle().fill(tint ?? .clear))
+                .overlay(Circle().strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.04)], startPoint: .top, endPoint: .bottom), lineWidth: 0.75))
+        }
+    }
+
     /// Liquid Glass on macOS 26+, frosted material with a hairline highlight before that.
     @ViewBuilder func glassTrack() -> some View {
         if #available(macOS 26.0, *) {
@@ -276,10 +288,10 @@ struct ModeMenu: View {
                 Text(selection?.rawValue ?? "Mixed")
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.text3)
             }
-            .font(Theme.font(12, .semibold))
+            .font(Theme.font(11, .semibold))
             .foregroundStyle(selection == nil || selection == .auto ? Theme.text2 : Theme.text)
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.raised))
+            .padding(.horizontal, 9).padding(.vertical, 3)
+            .glassTrack()
             .contentShape(Rectangle())
         }
         .menuStyle(.button)
@@ -589,12 +601,12 @@ private struct PowerButton: View {
     @State private var connecting = false
     @State private var spin = 0.0
 
-    private let size: CGFloat = 70, ring: CGFloat = 4
+    private let size: CGFloat = 58, ring: CGFloat = 3
 
     var body: some View {
         Button(action: toggle) {
             ZStack {
-                Circle().fill(.white)
+                Color.clear.glassCircle(tint: model.isOn && !connecting ? Theme.accent.opacity(0.28) : nil)
                 Circle().inset(by: -ring / 2 - 3)
                     .trim(from: 0, to: fill)
                     .stroke(Theme.accent, style: StrokeStyle(lineWidth: ring, lineCap: .round))
@@ -608,12 +620,13 @@ private struct PowerButton: View {
                         .rotationEffect(.degrees(spin))
                 }
                 Image(systemName: "power")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(Theme.background)
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(model.isOn && !connecting ? Theme.accent : Theme.text)
+                    .animation(.easeInOut(duration: 0.4), value: model.isOn)
             }
             .frame(width: size, height: size)
             .padding(7)
-            .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+            .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
             .scaleEffect(pressed ? 0.94 : 1)
             .animation(.spring(duration: 0.2), value: pressed)
         }
@@ -666,8 +679,8 @@ private struct Row<Content: View>: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Theme.text)
                         .rotationEffect(.degrees(isOpen ? 180 : 0))
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Theme.raised))
+                        .frame(width: 22, height: 22)
+                        .glassCircle()
                 }
                 .contentShape(Rectangle())
             }
