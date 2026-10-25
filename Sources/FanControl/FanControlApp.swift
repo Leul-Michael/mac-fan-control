@@ -107,6 +107,8 @@ final class PanelWindow {
             w.hasShadow = true
             w.isMovableByWindowBackground = true
             w.isReleasedWhenClosed = false
+            // Appear on whichever Space is active (desktop or a full-screen app), not the one it was first opened on.
+            w.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             w.contentView = host
             w.center()
             w.setFrameAutosaveName("FanControlPanel")
@@ -135,9 +137,7 @@ final class StatusItem: NSObject, NSMenuDelegate {
         self.item = item
     }
 
-    nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
-        MainActor.assumeIsolated { rebuild(menu) }
-    }
+    func menuNeedsUpdate(_ menu: NSMenu) { rebuild(menu) }
 
     private func rebuild(_ menu: NSMenu) {
         let model = FanModel.shared
