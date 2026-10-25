@@ -404,8 +404,6 @@ struct CompactPanel: View {
     var scrolls = true
     @State var open: String?
     @State private var bodyHeight: CGFloat = 200
-    /// Height of the window's (invisible) title bar; the panel slides up under it.
-    @State private var titleBar: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -429,8 +427,6 @@ struct CompactPanel: View {
         .frame(width: Theme.width)
         .fixedSize(horizontal: false, vertical: true)   // the window is exactly as tall as the content
         .background(Theme.background)
-        .onGeometryChange(for: CGFloat.self, of: \.safeAreaInsets.top) { if inWindow { titleBar = $0 } }
-        .padding(.top, inWindow ? -titleBar : 0)
         .environment(\.colorScheme, .dark)
     }
 
@@ -566,6 +562,7 @@ private struct MainMenu: View {
                 }
             }
             Divider()
+            Button("Open Window") { PanelWindow.shared.show() }
             Button("Settings…") { openSettings(); NSApp.activate() }
             Button("Quit Fan Control") { NSApp.terminate(nil) }
         } label: {
@@ -605,15 +602,15 @@ private struct PowerButton: View {
     @State private var connecting = false
     @State private var spin = 0.0
 
-    private let size: CGFloat = 58, ring: CGFloat = 3
+    private let size: CGFloat = 58, ring: CGFloat = 2
 
     var body: some View {
         Button(action: toggle) {
             ZStack {
-                Color.clear.glassCircle(tint: model.isOn && !connecting ? Theme.accent.opacity(0.28) : nil)
+                Color.clear.glassCircle()
                 Circle().inset(by: -ring / 2 - 3)
                     .trim(from: 0, to: fill)
-                    .stroke(Theme.accent, style: StrokeStyle(lineWidth: ring, lineCap: .round))
+                    .stroke(Theme.accent.opacity(0.75), style: StrokeStyle(lineWidth: ring, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 if connecting {
                     Circle().inset(by: -ring / 2 - 3)
@@ -625,7 +622,7 @@ private struct PowerButton: View {
                 }
                 Image(systemName: "power")
                     .font(.system(size: 21, weight: .bold))
-                    .foregroundStyle(model.isOn && !connecting ? Theme.accent : Theme.text)
+                    .foregroundStyle(model.isOn && !connecting ? Theme.accent.opacity(0.9) : Theme.text2)
                     .animation(.easeInOut(duration: 0.4), value: model.isOn)
             }
             .frame(width: size, height: size)
@@ -758,29 +755,6 @@ private struct Footer: View {
             Button("Cancel", role: .cancel) { presetName = "" }
         }
     }
-}
-
-// MARK: window chrome
-
-/// Makes the title bar invisible (header-coloured, no title, no traffic lights) and the window draggable anywhere.
-struct BorderlessWindow: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            guard let window = view.window else { return }
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
-            window.styleMask.insert(.fullSizeContentView)
-            window.isMovableByWindowBackground = true
-            window.backgroundColor = NSColor(Theme.header)   // the title bar strip blends into the header
-            for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                window.standardWindowButton(button)?.isHidden = true
-            }
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 // MARK: settings

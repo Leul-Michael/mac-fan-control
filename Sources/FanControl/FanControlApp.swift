@@ -9,15 +9,6 @@ struct FanControlApp: App {
     init() { Fonts.register() }
 
     var body: some Scene {
-        Window("Fan Control", id: "main") {
-            CompactPanel(inWindow: true)
-                .environment(model)
-                .background(BorderlessWindow())
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .windowBackgroundDragBehavior(.enabled)
-
         MenuBarExtra {
             CompactPanel().environment(model)
         } label: {
@@ -33,9 +24,18 @@ struct FanControlApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        #if DEBUG
-        MainActor.assumeIsolated { Snapshot.runIfRequested() }
-        #endif
+        MainActor.assumeIsolated {
+            #if DEBUG
+            Snapshot.runIfRequested()
+            #endif
+            PanelWindow.shared.show()
+        }
+    }
+
+    /// Clicking the app again (Finder, Spotlight) brings the panel back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated { PanelWindow.shared.show() }
+        return false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -67,7 +67,7 @@ enum Snapshot {
 }
 #endif
 
-/// Registers the bundled IBM Plex Sans files for this process.
+/// Registers the bundled font files for this process.
 enum Fonts {
     static func register() {
         let bundled = Bundle.main.resourceURL?.appendingPathComponent("Fonts")
@@ -79,5 +79,39 @@ enum Fonts {
             CTFontManagerRegisterFontURLs(files as CFArray, .process, true, nil)
             return
         }
+    }
+}
+
+/// The main panel in a plain AppKit window. The hosting view ignores the (invisible) title bar area and
+/// pins the window to the panel's exact size, so there is no strip above or below the content.
+@MainActor
+final class PanelWindow {
+    static let shared = PanelWindow()
+    private var window: NSWindow?
+
+    func show() {
+        if window == nil {
+            let host = NSHostingView(rootView: CompactPanel(inWindow: true).environment(FanModel.shared))
+            host.safeAreaRegions = []
+            host.sizingOptions = [.minSize, .maxSize]
+            let w = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize),
+                             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+                             backing: .buffered, defer: false)
+            w.titlebarAppearsTransparent = true
+            w.titleVisibility = .hidden
+            w.title = "Fan Control"
+            w.isMovableByWindowBackground = true
+            w.isReleasedWhenClosed = false
+            w.backgroundColor = NSColor(Theme.background)
+            for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                w.standardWindowButton(button)?.isHidden = true   // the panel draws its own dots
+            }
+            w.contentView = host
+            w.center()
+            w.setFrameAutosaveName("FanControlPanel")
+            window = w
+        }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
     }
 }
