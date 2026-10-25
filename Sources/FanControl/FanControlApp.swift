@@ -45,6 +45,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 enum Snapshot {
     @MainActor static func runIfRequested() {
         let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--icon"), i + 1 < args.count {
+            // Menu bar glyph at 8x on a menu-bar grey, tinted white like a dark menu bar draws it.
+            let out = NSImage(size: NSSize(width: 160, height: 160), flipped: false) { rect in
+                NSColor(white: 0.35, alpha: 1).setFill(); rect.fill()
+                let tinted = NSImage(size: NSSize(width: 144, height: 144), flipped: false) { r in
+                    StatusIcon.image.draw(in: r)
+                    NSColor.white.set(); r.fill(using: .sourceAtop)
+                    return true
+                }
+                tinted.draw(in: rect.insetBy(dx: 8, dy: 8))
+                return true
+            }
+            if let tiff = out.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+            }
+            exit(0)
+        }
         guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }
         RunLoop.main.run(until: Date().addingTimeInterval(1.5))
         let demo = args.contains("--demo")
@@ -128,9 +145,7 @@ final class StatusItem: NSObject, NSMenuDelegate {
     func install() {
         guard item == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        let image = NSImage(systemSymbolName: "fan", accessibilityDescription: "Fan Control")
-        image?.isTemplate = true   // follows the menu bar's light or dark appearance
-        item.button?.image = image
+        item.button?.image = StatusIcon.image
         let menu = NSMenu()
         menu.delegate = self       // rebuilt each time it opens, so it shows the current state
         item.menu = menu
@@ -191,4 +206,55 @@ final class MenuAction: NSObject {
     private let run: @MainActor () -> Void
     init(_ run: @escaping @MainActor () -> Void) { self.run = run }
     @objc func runAction() { run() }
+}
+
+/// The menu bar glyph: a solid rounded square with a turbine (ring of curved blades and a hub) cut out of it.
+/// Drawn as a template image so macOS tints it for light and dark menu bars.
+enum StatusIcon {
+    static let image: NSImage = {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            guard let cg = NSGraphicsContext.current?.cgContext else { return false }
+            let c = CGPoint(x: rect.midX, y: rect.midY)
+
+            // badge
+            cg.addPath(CGPath(roundedRect: rect.insetBy(dx: 1, dy: 1), cornerWidth: 4.2, cornerHeight: 4.2, transform: nil))
+            cg.setFillColor(.black)
+            cg.fillPath()
+
+            // cut out the turbine opening
+            cg.setBlendMode(.clear)
+            cg.addEllipse(in: CGRect(x: c.x - 6.3, y: c.y - 6.3, width: 12.6, height: 12.6))
+            cg.fillPath()
+
+            // blades: curved wedges from the hub to the rim, put back as solid
+            cg.setBlendMode(.normal)
+            cg.setFillColor(.black)
+            let blades = 9
+            for i in 0..<blades {
+                let a = CGFloat(i) / CGFloat(blades) * 2 * .pi
+                let blade = CGMutablePath()
+                let inner: CGFloat = 2.0, outer: CGFloat = 5.9, width: CGFloat = 0.32, sweep: CGFloat = 0.55
+                func p(_ r: CGFloat, _ t: CGFloat) -> CGPoint { CGPoint(x: c.x + r * cos(t), y: c.y + r * sin(t)) }
+                blade.move(to: p(inner, a - width * 0.6))
+                blade.addQuadCurve(to: p(outer, a + sweep - width), control: p((inner + outer) / 2, a + sweep * 0.25 - width))
+                blade.addLine(to: p(outer, a + sweep))
+                blade.addQuadCurve(to: p(inner, a + width * 0.6), control: p((inner + outer) / 2, a + sweep * 0.25 + width))
+                blade.closeSubpath()
+                cg.addPath(blade)
+            }
+            cg.fillPath()
+
+            // hub with a small centre hole
+            cg.addEllipse(in: CGRect(x: c.x - 2.4, y: c.y - 2.4, width: 4.8, height: 4.8))
+            cg.fillPath()
+            cg.setBlendMode(.clear)
+            cg.addEllipse(in: CGRect(x: c.x - 0.9, y: c.y - 0.9, width: 1.8, height: 1.8))
+            cg.fillPath()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Fan Control"
+        return image
+    }()
 }
