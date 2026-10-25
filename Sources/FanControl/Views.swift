@@ -807,10 +807,11 @@ struct MinimizedTile: View {
                 .background(RoundedRectangle(cornerRadius: 6 * s, style: .continuous).fill(Theme.header))
                 .overlay(RoundedRectangle(cornerRadius: 6 * s, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1 * s))
                 .frame(width: geo.size.width, height: geo.size.height)
+                // Our icon file has generous transparent padding, so it is drawn larger to match other badges.
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
-                    .frame(width: 40 * s, height: 40 * s)
-                    .offset(x: -6 * s, y: -18 * s)
+                    .frame(width: 54 * s, height: 54 * s)
+                    .offset(x: 2 * s, y: -10 * s)
             }
         }
     }
