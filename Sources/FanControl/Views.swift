@@ -582,17 +582,31 @@ private struct MainMenu: View {
     }
 }
 
-/// Hide and close, drawn top-right like Windscribe. The app lives in the menu bar, so both put it away there.
+/// Minimise and close, drawn top-right like Windscribe (the window is borderless, so it has no system buttons).
 private struct WindowDots: View {
+    @State private var hovering = false
+
     var body: some View {
         HStack(spacing: 8) {
-            dot(Color(red: 1.0, green: 0.74, blue: 0.18)) { NSApp.keyWindow?.orderOut(nil) }   // no Dock icon: hide to the menu bar
-            dot(Color(red: 1.0, green: 0.37, blue: 0.34)) { NSApp.keyWindow?.close() }
+            dot(Color(red: 1.0, green: 0.74, blue: 0.18), glyph: "minus") { PanelWindow.shared.minimize() }
+            dot(Color(red: 1.0, green: 0.37, blue: 0.34), glyph: "xmark") { PanelWindow.shared.close() }
         }
+        .onHover { hovering = $0 }   // like macOS: hovering the group reveals both glyphs
     }
 
-    private func dot(_ color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Circle().fill(color).frame(width: 12, height: 12) }.buttonStyle(.plain)
+    private func dot(_ color: Color, glyph: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Circle().fill(color)
+                .frame(width: 12, height: 12)
+                .overlay {
+                    if hovering {
+                        Image(systemName: glyph)
+                            .font(.system(size: 7, weight: .heavy))
+                            .foregroundStyle(.black.opacity(0.55))
+                    }
+                }
+        }
+        .buttonStyle(.plain)
     }
 }
 

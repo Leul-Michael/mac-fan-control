@@ -28,7 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Clicking the app again (Finder, Spotlight) brings the panel back.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        MainActor.assumeIsolated { PanelWindow.shared.show() }
+        MainActor.assumeIsolated {
+            if let minimized = NSApp.windows.first(where: \.isMiniaturized) { minimized.deminiaturize(nil) } else { PanelWindow.shared.show() }
+        }
         return false
     }
 
@@ -107,6 +109,9 @@ final class PanelWindow {
     static let radius: CGFloat = 8
     private var window: NSWindow?
 
+    func minimize() { window?.miniaturize(nil) }
+    func close() { window?.close() }
+
     func show() {
         if window == nil {
             let root = CompactPanel(inWindow: true)
@@ -117,7 +122,7 @@ final class PanelWindow {
             host.safeAreaRegions = []
             host.sizingOptions = [.minSize, .maxSize]
             let w = PanelNSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize),
-                                  styleMask: [.borderless], backing: .buffered, defer: false)
+                                  styleMask: [.borderless, .miniaturizable], backing: .buffered, defer: false)
             w.title = "Fan Control"
             w.isOpaque = false
             w.backgroundColor = .clear   // the rounded panel itself is the window's shape
