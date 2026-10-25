@@ -10,10 +10,14 @@ struct FanControlApp: App {
 
     var body: some Scene {
         Window("Fan Control", id: "main") {
-            CompactPanel(inWindow: true).environment(model)
+            CompactPanel(inWindow: true)
+                .environment(model)
+                .background(BorderlessWindow())
+                .ignoresSafeArea()
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+        .windowBackgroundDragBehavior(.enabled)
 
         MenuBarExtra {
             CompactPanel().environment(model)

@@ -1,23 +1,24 @@
+import AppKit
 import FanKit
 import SwiftUI
 
 // MARK: design tokens
 
+/// Flat charcoal surfaces, one accent that only means "on", hierarchy from type weight.
 enum Theme {
-    static let accent = Color(red: 0.22, green: 0.92, blue: 0.70)
-    static let accentDeep = Color(red: 0.05, green: 0.68, blue: 0.56)
-    static let blueTop = Color(red: 0.16, green: 0.42, blue: 0.98)
-    static let blueBottom = Color(red: 0.05, green: 0.14, blue: 0.42)
-    static let background = Color(red: 0.055, green: 0.067, blue: 0.105)
-    static let card = Color.white.opacity(0.045)
-    static let cardStroke = Color.white.opacity(0.07)
-    static let control = Color.white.opacity(0.07)
-    static let text = Color.white.opacity(0.94)
+    static let background = Color(red: 0.059, green: 0.067, blue: 0.078)   // #0F1114
+    static let header = Color(red: 0.098, green: 0.110, blue: 0.129)       // #191C21
+    static let raised = Color(red: 0.137, green: 0.153, blue: 0.180)       // #23272E
+    static let selected = Color.white.opacity(0.13)
+    static let line = Color.white.opacity(0.07)
+    static let footer = Color(red: 0.039, green: 0.043, blue: 0.051)       // #0A0B0D
+    static let accent = Color(red: 0.31, green: 0.93, blue: 0.69)          // the "on" green
+    static let action = Color(red: 0.04, green: 0.52, blue: 1.0)           // call to action blue
+    static let text = Color.white.opacity(0.95)
     static let text2 = Color.white.opacity(0.62)
-    static let text3 = Color.white.opacity(0.38)
-    static let accentGradient = LinearGradient(colors: [accent, accentDeep], startPoint: .top, endPoint: .bottom)
+    static let text3 = Color.white.opacity(0.40)
 
-    /// IBM Plex Sans (the typeface Windscribe uses) at a fixed size; digits keep a constant width so live numbers do not jitter.
+    /// IBM Plex Sans (the typeface Windscribe uses); digits keep a constant width so live numbers do not jitter.
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         let name = switch weight {
         case .bold, .heavy, .black: "IBMPlexSans-Bold"
@@ -28,11 +29,9 @@ enum Theme {
         return .custom(name, fixedSize: size).monospacedDigit()
     }
 
-    // 4-point spacing scale
-    static let s1: CGFloat = 4, s2: CGFloat = 8, s3: CGFloat = 12, s4: CGFloat = 16, s5: CGFloat = 20
-    static let radius: CGFloat = 14
-    static let width: CGFloat = 320
-    static let maxBodyHeight: CGFloat = 380
+    static let width: CGFloat = 300
+    static let pad: CGFloat = 16
+    static let maxBodyHeight: CGFloat = 360
 }
 
 enum Format {
@@ -42,46 +41,11 @@ enum Format {
 
     static func heat(_ c: Double) -> Color {
         switch c {
-        case ..<55: return Theme.accent
+        case ..<55: return Theme.text3
         case ..<75: return .yellow
         case ..<90: return .orange
         default: return .red
         }
-    }
-}
-
-// MARK: glass
-
-extension View {
-    /// Liquid Glass on macOS 26+, frosted material with a light edge highlight before that.
-    @ViewBuilder func glass(_ radius: CGFloat = Theme.radius, tint: Color? = nil) -> some View {
-        if #available(macOS 26.0, *) {
-            glassEffect(tint.map { Glass.regular.tint($0) } ?? .regular, in: .rect(cornerRadius: radius))
-        } else {
-            background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius))
-                .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(
-                    LinearGradient(colors: [.white.opacity(0.28), .white.opacity(0.04)], startPoint: .top, endPoint: .bottom), lineWidth: 1))
-        }
-    }
-}
-
-/// Deep blue base with soft colour glows, so the glass has something to refract.
-struct PanelBackground: View {
-    /// On: the glows brighten and shift toward mint, the way Windscribe's header lights up when connected.
-    var on = false
-
-    var body: some View {
-        ZStack {
-            LinearGradient(colors: [on ? Color(red: 0.06, green: 0.22, blue: 0.48) : Color(red: 0.07, green: 0.12, blue: 0.30),
-                                    Color(red: 0.03, green: 0.05, blue: 0.12)],
-                           startPoint: .top, endPoint: .bottom)
-            Circle().fill(on ? Color(red: 0.10, green: 0.55, blue: 0.95) : Theme.blueTop)
-                .frame(width: 260).blur(radius: 70).offset(x: 120, y: -230).opacity(on ? 0.95 : 0.55)
-            Circle().fill(Color(red: 0.45, green: 0.30, blue: 0.95)).frame(width: 200).blur(radius: 80).offset(x: -140, y: 20).opacity(on ? 0.30 : 0.40)
-            Circle().fill(Theme.accent).frame(width: on ? 280 : 200).blur(radius: 90).offset(x: on ? 90 : 110, y: on ? -120 : 260).opacity(on ? 0.45 : 0.22)
-        }
-        .clipped()
-        .animation(.easeInOut(duration: 0.9), value: on)
     }
 }
 
@@ -132,7 +96,7 @@ enum Setting: Equatable {
     @MainActor func summary(_ model: FanModel) -> String {
         switch self {
         case .auto: return "Auto"
-        case .speed(let share): return share >= 0.995 ? "Max" : "\(Int((share * 100).rounded()))%"
+        case .speed(let share): return share >= 0.995 ? "Max" : "Speed \(Int((share * 100).rounded()))%"
         case .sensor(let id, let start, let full):
             let name = model.availableSensors.first { $0.id == id }?.name ?? id
             return "\(name.replacingOccurrences(of: "CPU ", with: "")) \(Int(start))–\(Int(full))°"
@@ -142,7 +106,7 @@ enum Setting: Equatable {
 
 // MARK: controls
 
-/// Capsule segmented control with a sliding highlight.
+/// Flat segmented control: the selected segment is a lighter tile that slides.
 struct Segmented<Value: Hashable>: View {
     let options: [(Value, String)]
     let selection: Value?
@@ -150,44 +114,42 @@ struct Segmented<Value: Hashable>: View {
     @Namespace private var highlight
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 0) {
             ForEach(options, id: \.0) { value, title in
                 let selected = value == selection
-                Button { withAnimation(.snappy(duration: 0.25)) { onSelect(value) } } label: {
+                Button { withAnimation(.snappy(duration: 0.22)) { onSelect(value) } } label: {
                     Text(title)
-                        .font(Theme.font(12, .semibold))
-                        .foregroundStyle(selected ? Color.black.opacity(0.85) : Theme.text2)
+                        .font(Theme.font(12, selected ? .semibold : .medium))
+                        .foregroundStyle(selected ? Theme.text : Theme.text3)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
+                        .padding(.vertical, 6)
                         .background {
-                            if selected { Capsule().fill(Theme.accentGradient).matchedGeometryEffect(id: "pill", in: highlight) }
+                            if selected { RoundedRectangle(cornerRadius: 6).fill(Theme.selected).matchedGeometryEffect(id: "tile", in: highlight) }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(3)
-        .background(Capsule().fill(Theme.control))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.raised))
     }
 }
 
-/// Gradient track slider; reports values in 0...1.
+/// Thin track slider; reports values in 0...1.
 struct SpeedSlider: View {
     let value: Double
     let onChange: (Double) -> Void
 
     var body: some View {
         GeometryReader { geo in
-            let knob: CGFloat = 18
-            let x = (geo.size.width - knob) * value
+            let knob: CGFloat = 16
+            let x = (geo.size.width - knob) * CGFloat(value)
             ZStack(alignment: .leading) {
-                Capsule().fill(Theme.control).frame(height: 6)
-                Capsule().fill(Theme.accentGradient).frame(width: x + knob / 2, height: 6)
-                Circle()
-                    .fill(.white)
-                    .frame(width: knob, height: knob)
-                    .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                Capsule().fill(Theme.raised).frame(height: 4)
+                Capsule().fill(Theme.accent).frame(width: x + knob / 2, height: 4)
+                Circle().fill(.white).frame(width: knob, height: knob)
+                    .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
                     .offset(x: x)
             }
             .frame(maxHeight: .infinity)
@@ -197,7 +159,7 @@ struct SpeedSlider: View {
                 onChange((Double(max(0, min(1, v))) * 100).rounded() / 100)
             })
         }
-        .frame(height: 22)
+        .frame(height: 20)
     }
 }
 
@@ -209,18 +171,17 @@ struct Chip: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(Theme.font(11, .semibold))
-                .foregroundStyle(selected ? Theme.accent : Theme.text2)
+                .font(Theme.font(11, selected ? .semibold : .medium))
+                .foregroundStyle(selected ? Theme.text : Theme.text3)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 5)
-                .background(Capsule().fill(selected ? Theme.accent.opacity(0.16) : Theme.control))
-                .overlay(Capsule().strokeBorder(selected ? Theme.accent.opacity(0.4) : .clear, lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Theme.selected : Theme.raised))
         }
         .buttonStyle(.plain)
     }
 }
 
-/// "– 50° +" pill.
+/// "– 50° +" control.
 struct TemperatureStepper: View {
     let label: String
     let value: Double
@@ -228,25 +189,25 @@ struct TemperatureStepper: View {
     let onChange: (Double) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.s1) {
-            Text(label.uppercased()).font(Theme.font(9, .bold)).tracking(0.8).foregroundStyle(Theme.text3)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased()).font(Theme.font(9, .semibold)).tracking(1).foregroundStyle(Theme.text3)
             HStack(spacing: 0) {
                 step("minus", -1)
-                Text("\(Int(value))°").font(Theme.font(14, .semibold)).foregroundStyle(Theme.text).frame(maxWidth: .infinity)
+                Text("\(Int(value))°").font(Theme.font(13, .semibold)).foregroundStyle(Theme.text).frame(maxWidth: .infinity)
                 step("plus", 1)
             }
-            .padding(3)
-            .background(Capsule().fill(Theme.control))
+            .padding(2)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.raised))
         }
     }
 
     private func step(_ symbol: String, _ delta: Double) -> some View {
         Button { onChange(min(range.upperBound, max(range.lowerBound, value + delta))) } label: {
             Image(systemName: symbol)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(Theme.text2)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(Theme.control))
+                .frame(width: 26, height: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .buttonRepeatBehavior(.enabled)
@@ -260,12 +221,12 @@ struct SettingControls: View {
 
     var body: some View {
         let current = Setting.common(fans, model: model)
-        VStack(alignment: .leading, spacing: Theme.s3) {
+        VStack(alignment: .leading, spacing: 12) {
             Segmented(options: Setting.Kind.allCases.map { ($0, $0.rawValue) }, selection: current?.kind) { select($0) }
 
             switch current {
             case nil:
-                note("Fans are set differently — pick a mode to link them.")
+                note("Fans are set differently. Pick a mode to link them.")
             case .auto?:
                 note(fans.count > 1 ? "macOS is controlling both fans." : "macOS is controlling this fan.")
             case .speed(let share)?:
@@ -277,7 +238,7 @@ struct SettingControls: View {
     }
 
     private func note(_ text: String) -> some View {
-        Text(text).font(Theme.font(11, .medium)).foregroundStyle(Theme.text3)
+        Text(text).font(Theme.font(11)).foregroundStyle(Theme.text3)
     }
 
     private func apply(_ setting: Setting) {
@@ -293,12 +254,12 @@ struct SettingControls: View {
     }
 
     @ViewBuilder private func speed(_ share: Double) -> some View {
-        HStack(spacing: Theme.s3) {
+        HStack(spacing: 12) {
             SpeedSlider(value: share) { apply(.speed($0)) }
             Text("\(Int((share * 100).rounded()))%")
                 .font(Theme.font(13, .semibold))
                 .foregroundStyle(Theme.text)
-                .frame(width: 40, alignment: .trailing)
+                .frame(width: 38, alignment: .trailing)
         }
         HStack(spacing: 6) {
             ForEach([("Low", 0.0), ("50%", 0.5), ("75%", 0.75), ("Max", 1.0)], id: \.0) { name, value in
@@ -315,33 +276,33 @@ struct SettingControls: View {
                 }
             }
         } label: {
-            HStack(spacing: Theme.s2) {
-                Image(systemName: "thermometer.medium").foregroundStyle(Theme.accent)
+            HStack(spacing: 8) {
+                Text("Follow").foregroundStyle(Theme.text3)
                 Text(model.availableSensors.first { $0.id == id }?.name ?? id).foregroundStyle(Theme.text)
                 Spacer()
                 Text(model.celsius(id).map(Format.celsius) ?? "–").foregroundStyle(Theme.text2)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.text3)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.text3)
             }
-            .font(Theme.font(12, .semibold))
-            .padding(.horizontal, Theme.s3).padding(.vertical, Theme.s2)
-            .background(Capsule().fill(Theme.control))
-            .contentShape(Capsule())
+            .font(Theme.font(12, .medium))
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.raised))
+            .contentShape(Rectangle())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        HStack(spacing: Theme.s2) {
+        HStack(spacing: 8) {
             TemperatureStepper(label: "Speed up from", value: start, range: 30...95) { apply(.sensor(id: id, start: $0, full: max(full, $0 + 5))) }
             TemperatureStepper(label: "Max speed at", value: full, range: 35...105) { apply(.sensor(id: id, start: start, full: max($0, start + 5))) }
         }
     }
 }
 
-// MARK: compact panel (window and menu bar)
+// MARK: panel (window and menu bar)
 
 struct CompactPanel: View {
     @Environment(FanModel.self) private var model
-    /// The window shows traffic-light buttons over the header; the menu bar panel does not.
+    /// The window draws its own close and minimise dots; the menu bar panel has none.
     var inWindow = false
     /// Debug snapshots render without the scroll view, which image renderers cannot draw.
     var scrolls = true
@@ -351,52 +312,87 @@ struct CompactPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             Header(inWindow: inWindow)
-            if scrolls {
-                ScrollView {
-                    cards.onGeometryChange(for: CGFloat.self, of: \.size.height) { bodyHeight = $0 }
+            ZStack(alignment: .top) {
+                Theme.header   // shows through the slanted corner of the panel below
+                VStack(spacing: 0) {
+                    if scrolls {
+                        ScrollView {
+                            sections.onGeometryChange(for: CGFloat.self, of: \.size.height) { bodyHeight = $0 }
+                        }
+                        .scrollIndicators(.never)
+                        .frame(height: min(bodyHeight, Theme.maxBodyHeight))
+                    } else {
+                        sections
+                    }
                 }
-                .frame(height: min(bodyHeight, Theme.maxBodyHeight))
-            } else {
-                cards
+                .background(Theme.background)
+                .clipShape(SlantedTab())
             }
             Footer()
         }
         .frame(width: Theme.width)
-        .background(PanelBackground(on: model.isOn))
+        .background(Theme.background)
         .environment(\.colorScheme, .dark)
     }
 
-    private var cards: some View {
-                VStack(spacing: Theme.s2) {
-                    if model.fans.count > 1 {
-                        Card {
-                            CardTitle(icon: "fan.fill", title: "Both Fans", detail: Setting.common(model.fans, model: model)?.summary(model) ?? "Mixed")
-                            SettingControls(fans: model.fans)
+    private var sections: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if model.fans.count > 1 {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("BOTH FANS").font(Theme.font(11, .semibold)).tracking(1.4).foregroundStyle(Theme.text3)
+                    SettingControls(fans: model.fans)
+                }
+                .padding(.horizontal, Theme.pad).padding(.top, 22).padding(.bottom, Theme.pad)
+                Rectangle().fill(Theme.line).frame(height: 1)
+            }
+            Row(id: "fans", open: $open, title: model.fans.count > 1 ? "Each fan" : "Fan",
+                detail: model.fans.map { Setting(model.rule($0.id), fan: $0).summary(model) }.joined(separator: " · ")) {
+                ForEach(model.fans) { fan in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(fan.name.replacingOccurrences(of: " Fan", with: "")).font(Theme.font(13, .semibold)).foregroundStyle(Theme.text)
+                            Text("fan").font(Theme.font(13)).foregroundStyle(Theme.text2)
+                            Spacer()
+                            Text(Format.rpm(fan.rpm)).font(Theme.font(13, .medium)).foregroundStyle(Theme.text2)
+                            if fan.rpm >= 50 { Text("rpm").font(Theme.font(11)).foregroundStyle(Theme.text3) }
                         }
+                        SettingControls(fans: [fan])
                     }
-                    Expander(id: "fans", open: $open, icon: "slider.horizontal.3", title: model.fans.count > 1 ? "Each Fan" : "Fan",
-                             detail: model.fans.map { Setting(model.rule($0.id), fan: $0).summary(model) }.joined(separator: " · ")) {
-                        ForEach(model.fans) { fan in
-                            VStack(alignment: .leading, spacing: Theme.s3) {
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(fan.name).font(Theme.font(13, .semibold)).foregroundStyle(Theme.text)
-                                    Spacer()
-                                    Text(Format.rpm(fan.rpm)).font(Theme.font(13, .semibold)).foregroundStyle(Theme.text)
-                                    if fan.rpm >= 50 { Text("rpm").font(Theme.font(10, .medium)).foregroundStyle(Theme.text3) }
-                                }
-                                SettingControls(fans: [fan])
-                            }
-                            if fan.id != model.fans.last?.id { Rectangle().fill(Theme.cardStroke).frame(height: 1) }
-                        }
-                    }
-                    Expander(id: "temps", open: $open, icon: "thermometer.medium", title: "Temperatures",
-                             detail: model.celsius("gpu").map { "GPU \(Format.celsius($0))" } ?? "") {
-                        VStack(spacing: Theme.s3) {
-                            ForEach(model.sensors) { s in TemperatureRow(sensor: s) }
+                    .padding(.bottom, fan.id == model.fans.last?.id ? 0 : 8)
+                }
+            }
+            Rectangle().fill(Theme.line).frame(height: 1)
+            Row(id: "temps", open: $open, title: "Temperatures",
+                detail: model.celsius("gpu").map { "GPU \(Format.celsius($0))" } ?? "") {
+                VStack(spacing: 9) {
+                    ForEach(model.sensors) { s in
+                        HStack {
+                            Text(s.name).font(Theme.font(12)).foregroundStyle(Theme.text2)
+                            Spacer()
+                            Text(String(format: "%.0f°", s.celsius)).font(Theme.font(12, .medium))
+                                .foregroundStyle(s.celsius >= 75 ? Format.heat(s.celsius) : Theme.text)
                         }
                     }
                 }
-                .padding(Theme.s3)
+            }
+        }
+    }
+}
+
+/// The lower panel's top edge steps down on the left at an angle, like Windscribe's Locations tab.
+struct SlantedTab: Shape {
+    var step: CGFloat = 14, run: CGFloat = 26, inset: CGFloat = 92
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY + step))
+        p.addLine(to: CGPoint(x: rect.minX + inset, y: rect.minY + step))
+        p.addLine(to: CGPoint(x: rect.minX + inset + run, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
     }
 }
 
@@ -405,286 +401,226 @@ private struct Header: View {
     let inWindow: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.s4) {
-            HStack(spacing: Theme.s2) {
-                if inWindow { Spacer().frame(width: 56) }   // room for the window buttons
-                Text("Fan Control").font(Theme.font(13, .bold)).foregroundStyle(.white.opacity(0.9))
+        let setting = Setting.common(model.fans, model: model)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                MainMenu()
+                Text("fancontrol").font(Theme.font(18, .bold)).tracking(-0.4).foregroundStyle(Theme.text)
                 Spacer()
-                StatusPill(on: model.isOn)
+                if inWindow { WindowDots() }
             }
-            HStack(alignment: .center, spacing: Theme.s3) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 1) {
-                        Text(model.celsius("cpu-hot").map { "\(Int($0.rounded()))" } ?? "–")
-                            .font(Theme.font(52, .bold))
-                            .tracking(-2)
+            .frame(height: 28)
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Text(model.isOn ? "ON" : "OFF")
+                            .font(Theme.font(11, .bold)).tracking(1)
+                            .foregroundStyle(model.isOn ? Theme.accent : Theme.text)
+                            .padding(.horizontal, 9).padding(.vertical, 3)
+                            .background(Capsule().fill(model.isOn ? Theme.accent.opacity(0.14) : Theme.raised))
+                        Text(model.isOn ? (model.activePreset?.name ?? setting?.summary(model) ?? "Custom") : "macOS decides")
+                            .font(Theme.font(14, .medium))
+                            .foregroundStyle(model.isOn ? Theme.accent : Theme.text2)
+                            .lineLimit(1)
+                    }
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(model.celsius("cpu-hot").map(Format.celsius) ?? "–")
+                            .font(Theme.font(26, .bold))
                             .contentTransition(.numericText())
                             .animation(.snappy, value: Int(model.celsius("cpu-hot") ?? 0))
-                        Text("°C").font(Theme.font(17, .semibold)).foregroundStyle(.white.opacity(0.7))
+                        Text("CPU").font(Theme.font(26))
                     }
-                    .foregroundStyle(.white)
-                    Text("CPU hottest core").font(Theme.font(11, .medium)).foregroundStyle(.white.opacity(0.6))
-                    Text(model.isOn ? (model.activePreset?.name ?? Setting.common(model.fans, model: model).map { "Both fans · \($0.summary(model))" } ?? "Custom") : "macOS decides")
-                        .font(Theme.font(12, .semibold))
-                        .foregroundStyle(model.isOn ? Theme.accent : .white.opacity(0.55))
-                        .lineLimit(1)
-                        .padding(.top, Theme.s1)
+                    .foregroundStyle(Theme.text)
                 }
+                .padding(.top, 14)
                 Spacer(minLength: 0)
-                PowerButton()
+                PowerButton().padding(.top, 2)
             }
-            HStack(spacing: Theme.s2) {
-                ForEach(model.fans) { FanTile(fan: $0, controlled: model.rule($0.id) != .auto) }
+            HStack(spacing: 6) {
+                Image(systemName: "fan")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.text2)
+                    .symbolEffect(.rotate, options: .repeat(.continuous).speed(1.2), isActive: model.fans.contains { $0.rpm >= 50 })
+                Text(model.fans.map { "\($0.name.replacingOccurrences(of: " Fan", with: "")) \(Format.rpm($0.rpm))" }.joined(separator: "  ·  "))
+                    .font(Theme.font(13)).foregroundStyle(Theme.text2)
+                Spacer()
+                Text(model.celsius("gpu").map { "GPU \(Format.celsius($0))" } ?? "")
+                    .font(Theme.font(13)).foregroundStyle(Theme.text2)
             }
+            .padding(.top, 14)
+            .padding(.bottom, 18)
         }
-        .padding(.horizontal, Theme.s4)
-        .padding(.top, inWindow ? Theme.s3 : Theme.s4)
-        .padding(.bottom, Theme.s4)
+        .padding(.horizontal, Theme.pad)
+        .padding(.top, 12)
+        .background(Theme.header)
     }
 }
 
-private struct StatusPill: View {
-    let on: Bool
+/// Hamburger menu: presets, settings, quit.
+private struct MainMenu: View {
+    @Environment(FanModel.self) private var model
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        HStack(spacing: 5) {
-            Circle().fill(on ? Theme.accent : .white.opacity(0.5)).frame(width: 6, height: 6)
-            Text(on ? "ON" : "AUTO").font(Theme.font(10, .heavy)).tracking(0.8)
-        }
-        .foregroundStyle(on ? Theme.accent : .white.opacity(0.75))
-        .padding(.horizontal, 9).padding(.vertical, 4)
-        .glass(12, tint: on ? Theme.accent.opacity(0.18) : nil)
-    }
-}
-
-private struct FanTile: View {
-    let fan: FanReading
-    let controlled: Bool
-
-    var body: some View {
-        HStack(spacing: Theme.s2) {
-            Image(systemName: "fan.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(fan.rpm < 50 ? .white.opacity(0.35) : controlled ? Theme.accent : .white.opacity(0.8))
-                .symbolEffect(.rotate, options: .repeat(.continuous).speed(max(0.3, fan.load * 3)), isActive: fan.rpm >= 50)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text(fan.name.replacingOccurrences(of: " Fan", with: "").uppercased())
-                        .font(Theme.font(9, .bold)).tracking(0.8).foregroundStyle(.white.opacity(0.55))
-                    Spacer(minLength: 0)
-                    Text(Format.rpm(fan.rpm)).font(Theme.font(13, .semibold)).foregroundStyle(.white)
-                        .contentTransition(.numericText())
+        Menu {
+            ForEach(model.presets) { preset in
+                Button { model.apply(preset) } label: {
+                    if preset.id == model.activePresetID { Label(preset.name, systemImage: "checkmark") } else { Text(preset.name) }
                 }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.15))
-                        Capsule().fill(controlled ? Theme.accent : .white.opacity(0.7))
-                            .frame(width: geo.size.width * max(0.02, fan.load))
-                            .animation(.easeOut(duration: 0.6), value: fan.load)
-                    }
-                }
-                .frame(height: 3)
             }
+            Divider()
+            Button("Settings…") { openSettings(); NSApp.activate() }
+            Button("Quit Fan Control") { NSApp.terminate(nil) }
+        } label: {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Theme.text2)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
-        .padding(.horizontal, 10).padding(.vertical, Theme.s2)
-        .glass(12)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 }
 
-/// Windscribe-style power button: turning on spins an arc around the ring while the helper takes over,
-/// then the ring fills mint and the glow breathes; turning off winds the ring back to grey.
+/// Minimise and close, drawn top-right like Windscribe (the system buttons are hidden).
+private struct WindowDots: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            dot(Color(red: 1.0, green: 0.74, blue: 0.18)) { NSApp.keyWindow?.miniaturize(nil) }
+            dot(Color(red: 1.0, green: 0.37, blue: 0.34)) { NSApp.keyWindow?.close() }
+        }
+    }
+
+    private func dot(_ color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Circle().fill(color).frame(width: 12, height: 12) }.buttonStyle(.plain)
+    }
+}
+
+/// Solid white button. Turning on spins a green arc around it while the helper takes over, then the
+/// green ring closes; turning off unwinds the ring.
 private struct PowerButton: View {
     @Environment(FanModel.self) private var model
     @State private var pressed = false
     @State private var fill: CGFloat = 0
     @State private var connecting = false
     @State private var spin = 0.0
-    @State private var breathe = false
 
-    private let size: CGFloat = 78, ring: CGFloat = 5
+    private let size: CGFloat = 70, ring: CGFloat = 4
 
     var body: some View {
-        let lit = model.isOn && !connecting
         Button(action: toggle) {
             ZStack {
-                // halo
-                Circle()
-                    .fill(Theme.accent.opacity(lit ? 0.30 : 0.0))
-                    .padding(-10)
-                    .scaleEffect(lit && breathe ? 1.10 : 0.96)
-                    .blur(radius: 6)
-                Circle().fill(.white.opacity(0.08)).padding(-6)
-                // face
-                Circle().fill(LinearGradient(colors: [.white, Color(white: 0.86)], startPoint: .top, endPoint: .bottom))
-                // ring track, fill and the connecting arc
-                Circle().inset(by: ring / 2).stroke(Color(white: 0.78), lineWidth: ring)
-                Circle().inset(by: ring / 2)
+                Circle().fill(.white)
+                Circle().inset(by: -ring / 2 - 3)
                     .trim(from: 0, to: fill)
-                    .stroke(Theme.accentGradient, style: StrokeStyle(lineWidth: ring, lineCap: .round))
+                    .stroke(Theme.accent, style: StrokeStyle(lineWidth: ring, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 if connecting {
-                    Circle().inset(by: ring / 2)
-                        .trim(from: 0, to: 0.3)
+                    Circle().inset(by: -ring / 2 - 3)
+                        .trim(from: 0, to: 0.28)
                         .stroke(AngularGradient(colors: [Theme.accent.opacity(0), Theme.accent], center: .center,
-                                                startAngle: .degrees(0), endAngle: .degrees(108)),
+                                                startAngle: .degrees(0), endAngle: .degrees(100)),
                                 style: StrokeStyle(lineWidth: ring, lineCap: .round))
                         .rotationEffect(.degrees(spin))
                 }
                 Image(systemName: "power")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(lit ? Theme.blueBottom : Color(white: 0.58))
-                    .scaleEffect(connecting ? 0.9 : 1)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(Theme.background)
             }
             .frame(width: size, height: size)
-            .shadow(color: lit ? Theme.accent.opacity(0.55) : .black.opacity(0.3), radius: lit ? 16 : 6, y: 2)
-            .scaleEffect(pressed ? 0.93 : 1)
+            .padding(7)
+            .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+            .scaleEffect(pressed ? 0.94 : 1)
             .animation(.spring(duration: 0.2), value: pressed)
-            .animation(.easeInOut(duration: 0.4), value: lit)
         }
         .buttonStyle(.plain)
         .onLongPressGesture(minimumDuration: .infinity, pressing: { pressed = $0 }, perform: {})
         .help(model.helperInstalled ? (model.isOn ? "Hand the fans back to macOS" : "Use your fan settings") : "Install the helper first")
-        .onAppear {
-            fill = model.isOn ? 1 : 0
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { breathe = true }
-        }
+        .onAppear { fill = model.isOn ? 1 : 0 }
         .onChange(of: model.isOn) { _, on in
-            // Presets and the fan controls can switch the state too; follow without the connecting spin.
-            guard !connecting else { return }
-            withAnimation(.easeInOut(duration: 0.5)) { fill = on ? 1 : 0 }
+            guard !connecting else { return }   // presets and fan controls switch it too: follow without the spin
+            withAnimation(.easeInOut(duration: 0.45)) { fill = on ? 1 : 0 }
         }
     }
 
     private func toggle() {
         guard model.helperInstalled else { model.installHelper(); return }
-        let turningOn = !model.isOn
-        if turningOn {
-            connecting = true
-            fill = 0
-            spin = 0
-            withAnimation(.linear(duration: 1.0)) { spin = 720 }
+        if model.isOn {
             model.togglePower()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                connecting = false
-                withAnimation(.easeOut(duration: 0.55)) { fill = 1 }
-            }
-        } else {
-            model.togglePower()
-            withAnimation(.easeInOut(duration: 0.45)) { fill = 0 }
+            withAnimation(.easeInOut(duration: 0.4)) { fill = 0 }
+            return
+        }
+        connecting = true
+        fill = 0
+        spin = 0
+        withAnimation(.linear(duration: 1.0)) { spin = 720 }
+        model.togglePower()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            connecting = false
+            withAnimation(.easeOut(duration: 0.5)) { fill = 1 }
         }
     }
 }
 
-private struct Card<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.s3) { content }
-            .padding(Theme.s4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glass()
-    }
-}
-
-private struct CardTitle: View {
-    let icon: String
-    let title: String
-    let detail: String
-
-    var body: some View {
-        HStack(spacing: Theme.s2) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Theme.accent)
-                .frame(width: 24, height: 24)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.accent.opacity(0.14)))
-            Text(title).font(Theme.font(13, .semibold)).foregroundStyle(Theme.text)
-            Spacer()
-            Text(detail).font(Theme.font(11, .semibold)).foregroundStyle(Theme.text2).lineLimit(1)
-        }
-    }
-}
-
-/// Collapsible card; only one is open at a time so the panel stays short.
-private struct Expander<Content: View>: View {
+/// A row with a round chevron that expands its content; one open at a time.
+private struct Row<Content: View>: View {
     let id: String
     @Binding var open: String?
-    let icon: String
     let title: String
     let detail: String
     @ViewBuilder let content: Content
 
     var body: some View {
         let isOpen = open == id
-        Card {
-            Button { withAnimation(.snappy(duration: 0.28)) { open = isOpen ? nil : id } } label: {
-                HStack(spacing: Theme.s2) {
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Theme.text2)
-                        .frame(width: 24, height: 24)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Theme.control))
-                    Text(title).font(Theme.font(13, .semibold)).foregroundStyle(Theme.text)
+        VStack(alignment: .leading, spacing: 14) {
+            Button { withAnimation(.snappy(duration: 0.25)) { open = isOpen ? nil : id } } label: {
+                HStack(spacing: 10) {
+                    Text(title).font(Theme.font(15)).foregroundStyle(Theme.text)
                     Spacer()
-                    if !isOpen { Text(detail).font(Theme.font(11, .medium)).foregroundStyle(Theme.text3).lineLimit(1) }
+                    if !isOpen { Text(detail).font(Theme.font(12)).foregroundStyle(Theme.text3).lineLimit(1) }
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Theme.text2)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.text)
                         .rotationEffect(.degrees(isOpen ? 180 : 0))
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Theme.raised))
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             if isOpen { content.transition(.opacity) }
         }
-    }
-}
-
-private struct TemperatureRow: View {
-    let sensor: SensorReading
-
-    var body: some View {
-        VStack(spacing: 5) {
-            HStack {
-                Text(sensor.name).font(Theme.font(12, .medium)).foregroundStyle(Theme.text2)
-                Spacer()
-                Text(String(format: "%.0f°", sensor.celsius)).font(Theme.font(12, .semibold)).foregroundStyle(Theme.text)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.control)
-                    Capsule().fill(Format.heat(sensor.celsius).gradient)
-                        .frame(width: geo.size.width * max(0.03, min(1, (sensor.celsius - 20) / 85)))
-                }
-            }
-            .frame(height: 3)
-        }
+        .padding(.horizontal, Theme.pad).padding(.vertical, 12)
     }
 }
 
 private struct Footer: View {
     @Environment(FanModel.self) private var model
-    @Environment(\.openSettings) private var openSettings
     @State private var savingPreset = false
     @State private var presetName = ""
 
     var body: some View {
-        HStack(spacing: Theme.s2) {
+        HStack(spacing: 8) {
             if !model.helperInstalled {
+                Text("Helper not installed").font(Theme.font(12)).foregroundStyle(Theme.text2)
+                Spacer()
                 Button { model.installHelper() } label: {
-                    Label(model.installing ? "Installing…" : "Install Helper", systemImage: "lock.shield.fill")
-                        .font(Theme.font(12, .semibold))
-                        .foregroundStyle(.black.opacity(0.85))
-                        .padding(.horizontal, Theme.s3).padding(.vertical, 6)
-                        .background(Capsule().fill(Theme.accentGradient))
+                    Text(model.installing ? "Installing…" : "Install helper")
+                        .font(Theme.font(12, .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(Capsule().fill(Theme.action))
                 }
                 .buttonStyle(.plain)
                 .disabled(model.installing)
-                Text("to change speeds").font(Theme.font(11, .medium)).foregroundStyle(Theme.text3)
             } else if let message = model.message {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text(message).font(Theme.font(11, .medium)).foregroundStyle(Theme.text2).lineLimit(2)
+                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(.orange)
+                Text(message).font(Theme.font(11)).foregroundStyle(Theme.text2).lineLimit(2)
+                Spacer()
             } else {
+                Circle().fill(model.helperRunning ? Theme.accent : Theme.text3).frame(width: 6, height: 6)
                 Menu {
                     ForEach(model.presets) { preset in
                         Button { model.apply(preset) } label: {
@@ -699,48 +635,54 @@ private struct Footer: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "square.stack.3d.up.fill").foregroundStyle(Theme.accent)
+                    HStack(spacing: 5) {
                         Text(model.activePreset?.name ?? "Custom").foregroundStyle(Theme.text)
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.text3)
                     }
-                    .font(Theme.font(12, .semibold))
-                    .padding(.horizontal, Theme.s3).padding(.vertical, 6)
-                    .background(Capsule().fill(Theme.control))
-                    .contentShape(Capsule())
+                    .font(Theme.font(12, .medium))
+                    .contentShape(Rectangle())
                 }
                 .menuStyle(.button)
                 .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                Spacer()
+                Text(model.fans.allSatisfy { $0.rpm < 50 } ? "Fans idle" : model.fans.map { Format.shortRPM($0.rpm) }.joined(separator: " / ") + " rpm")
+                    .font(Theme.font(12)).foregroundStyle(Theme.text3)
             }
-            Spacer()
-            Menu {
-                Button("Settings…") { openSettings(); NSApp.activate() }
-                Divider()
-                Button("Quit Fan Control") { NSApp.terminate(nil) }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Theme.text2)
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(Theme.control))
-                    .contentShape(Circle())
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
         }
-        .padding(.horizontal, Theme.s3).padding(.vertical, 10)
-        .glass(16)
-        .padding(.horizontal, Theme.s3).padding(.bottom, Theme.s3)
+        .padding(.horizontal, Theme.pad).frame(height: 38)
+        .background(Theme.footer)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
         .alert("Save Preset", isPresented: $savingPreset) {
             TextField("Name", text: $presetName)
             Button("Save") { model.saveCurrentAsPreset(named: presetName); presetName = "" }
             Button("Cancel", role: .cancel) { presetName = "" }
         }
     }
+}
+
+// MARK: window chrome
+
+/// Hides the system title bar and traffic lights so the panel reaches the window edge.
+struct BorderlessWindow: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
+            window.isMovableByWindowBackground = true
+            window.backgroundColor = NSColor(Theme.background)
+            for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                window.standardWindowButton(button)?.isHidden = true
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 // MARK: settings
