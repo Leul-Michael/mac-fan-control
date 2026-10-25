@@ -131,37 +131,21 @@ final class PanelWindow {
     }
 }
 
-/// Menu bar item: fan glyph, a temperature and the fan speed; clicking it shows or hides the panel window.
+/// Menu bar item: an outlined fan icon; clicking it shows or hides the panel window.
 @MainActor
 final class StatusItem: NSObject {
     static let shared = StatusItem()
     private var item: NSStatusItem?
-    private var timer: Timer?
 
     func install() {
         guard item == nil else { return }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let image = NSImage(systemSymbolName: "fan", accessibilityDescription: "Fan Control")
+        image?.isTemplate = true   // follows the menu bar's light or dark appearance
+        item.button?.image = image
         item.button?.target = self
         item.button?.action = #selector(clicked)
-        item.button?.imagePosition = .imageLeading
         self.item = item
-        update()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            MainActor.assumeIsolated { StatusItem.shared.update() }
-        }
-    }
-
-    private func update() {
-        guard let button = item?.button else { return }
-        let model = FanModel.shared
-        button.image = NSImage(systemSymbolName: model.isOn ? "fan.fill" : "fan", accessibilityDescription: "Fan Control")
-        var parts: [String] = []
-        if !model.menuBarSensor.isEmpty, let t = model.celsius(model.menuBarSensor) { parts.append(Format.celsius(t)) }
-        if model.menuBarShowsRPM, let rpm = model.fans.map(\.rpm).max() { parts.append(Format.shortRPM(rpm)) }
-        let title = parts.isEmpty ? "" : " " + parts.joined(separator: " ")
-        if button.title != title {
-            button.attributedTitle = NSAttributedString(string: title, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])
-        }
     }
 
     @objc private func clicked() {

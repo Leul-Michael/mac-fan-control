@@ -547,6 +547,7 @@ private struct Header: View {
         }
         .padding(.horizontal, Theme.pad)
         .padding(.top, 12)
+        .background { if inWindow { WindowDragArea() } }
         .background(Theme.header)
     }
 }
@@ -770,6 +771,19 @@ private struct Footer: View {
     }
 }
 
+// MARK: window dragging
+
+/// Empty header space moves the window (the borderless panel has no title bar to grab).
+struct WindowDragArea: NSViewRepresentable {
+    final class DragView: NSView {
+        override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+        override var mouseDownCanMoveWindow: Bool { true }
+    }
+
+    func makeNSView(context: Context) -> NSView { DragView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
 // MARK: settings
 
 struct SettingsView: View {
@@ -778,13 +792,6 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var model = model
         Form {
-            Section("Menu bar") {
-                Picker("Temperature", selection: $model.menuBarSensor) {
-                    Text("None").tag("")
-                    ForEach(model.availableSensors) { Text($0.name).tag($0.id) }
-                }
-                Toggle("Show fan speed", isOn: $model.menuBarShowsRPM)
-            }
             Section("Behaviour") {
                 Toggle("Launch at login", isOn: Binding(get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
                 Toggle("Use Auto on battery", isOn: $model.autoOnBattery)

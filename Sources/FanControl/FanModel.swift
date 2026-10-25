@@ -26,8 +26,6 @@ final class FanModel {
     var message: String?
 
     var keepRulesOnQuit: Bool { didSet { defaults.set(keepRulesOnQuit, forKey: "keepRulesOnQuit") } }
-    var menuBarSensor: String { didSet { defaults.set(menuBarSensor, forKey: "menuBarSensor") } }
-    var menuBarShowsRPM: Bool { didSet { defaults.set(menuBarShowsRPM, forKey: "menuBarShowsRPM") } }
     var autoOnBattery: Bool { didSet { defaults.set(autoOnBattery, forKey: "autoOnBattery"); push() } }
 
     private let smc: SMC?
@@ -51,8 +49,6 @@ final class FanModel {
         smc = try? SMC()
         reader = smc.map { SensorReader(smc: $0) }
         keepRulesOnQuit = defaults.object(forKey: "keepRulesOnQuit") as? Bool ?? false
-        menuBarSensor = defaults.string(forKey: "menuBarSensor") ?? "cpu-hot"
-        menuBarShowsRPM = defaults.object(forKey: "menuBarShowsRPM") as? Bool ?? true
         autoOnBattery = defaults.object(forKey: "autoOnBattery") as? Bool ?? true
         if let data = defaults.data(forKey: "customPresets"), let saved = try? JSONDecoder().decode([Preset].self, from: data) { customPresets = saved }
         if let data = defaults.data(forKey: "rules"), let saved = try? JSONDecoder().decode([Int: FanRule].self, from: data) { rules = saved }
